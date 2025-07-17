@@ -53,7 +53,7 @@ pub enum Effect {
     Fn(fn(&History) -> f32),
     /// Amplify the sample by a factor.
     Amplify(f32),
-    /// Make the sample more crunchy.
+    /// Make the sample more crunchy. Must be between 0.8 and 1.0.
     Crunchy(f32),
     /// Shift the pitch of the sample by a given number of semitones.
     PitchShift(i8),
@@ -73,13 +73,13 @@ impl Effect {
             },
             Effect::Crunchy(decay) => {
                 let last_grain = history.last_grain();
-                
-                // Get the current (most recent) sample
+
+                // get the most recent sample
                 let current_sample = last_grain.first().unwrap_or(&&0.0);
-                
+
                 // Calculate crunchy contribution from older samples
-                // Use decay clamped between 0.1 and 0.95 for stability
-                let safe_decay = decay.clamp(0.1, 0.95);
+                // Use decay clamped between 0.8 and 1.0 for stability
+                let safe_decay = decay.clamp(0.8, 1.0);
                 let crunchy_contribution = last_grain.iter()
                     .skip(1) // Skip the current sample
                     .enumerate()
@@ -87,7 +87,7 @@ impl Effect {
                     .sum::<f32>();
 
                 // Mix the current sample with crunchy (decay also controls mix level)
-                **current_sample + crunchy_contribution * safe_decay * 0.5
+                **current_sample + crunchy_contribution * safe_decay
             },
             Effect::PitchShift(semitones) => {
                 todo!()

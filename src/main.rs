@@ -34,7 +34,7 @@ async fn main() {
             .config(PatternConfig::new(120, 1.0, 8))
             .sample(load_sample_wav("samples/kick.wav"))
             .trigger_beats(vec![1, 3, 5, 7, 8])
-            .effect(Effect::Crunchy(0.9))
+            .effect(Effect::Crunchy(0.85))
             .build()
             .unwrap(),
     );
