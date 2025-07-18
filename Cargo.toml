@@ -1,15 +1,20 @@
 [package]
-name = "music"
+name = "gran"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "gran"
+path = "src/lib.rs"
+
+[[bin]]
+name = "gran"
+path = "src/main.rs"
+
 [dependencies]
 cpal = "0.16.0"
-fon = "0.4.0"
 hound = "3.5.1"
-itertools = "0.14.0"
-puremp3 = "0.1.0"
 rand = "0.9.1"
 rodio = "0.21.1"
+# rustfft = "6.4.0"
 tokio = { version = "1.46.1", features = ["full"] }
-wavy = "0.9.1"

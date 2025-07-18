@@ -1,66 +1,45 @@
-mod player;
-mod state;
+#![warn(clippy::all, clippy::pedantic, unused_crate_dependencies)]
 
-use player::play_composition;
-use rodio::Decoder;
-use state::{Composition, Effect, PatternBuilder, PatternConfig};
+use gran::{play_composition, Sound, Composition, Sample, Gain};
+use rodio::{Decoder, Source};
 use std::{fs::File, io::BufReader};
 
-fn load_sample_wav(path: &str) -> Vec<f32> {
+// returns (samples, sample rate)
+fn load_sample_wav(path: &str) -> (Vec<f32>, usize) {
     let mut reader = hound::WavReader::open(path).unwrap();
+    let sample_rate = reader.spec().sample_rate;
     let samples: Vec<i32> = reader.samples::<i32>().map(|s| s.unwrap()).collect();
 
-    samples.iter().map(|s| *s as f32 / i32::MAX as f32).collect()
+    (samples.iter().map(|s| *s as f32 / i32::MAX as f32).collect(), sample_rate as usize)
 }
 
-fn load_sample_mp3(path: &str) -> Vec<f32> {
+// returns (samples, sample rate)
+fn load_sample_mp3(path: &str) -> (Vec<f32>, usize) {
     let file = File::open(path).unwrap();
     let source = Decoder::new(BufReader::new(file)).unwrap();
-    
+    let sample_rate = source.sample_rate();
+
     let samples: Vec<f32> = source
         .into_iter()
         .map(|sample| sample as f32 / i16::MAX as f32)
         .collect();
     
-    samples
+    (samples, sample_rate as usize)
 }
 
 #[tokio::main]
 async fn main() {
+    let (samples, sample_rate) = load_sample_wav("samples/kick.wav");
+    let mut kick = Sample::new(samples, sample_rate);
+    kick.add_effect(Box::new(Gain(100.0)));
+
+    let (samples, sample_rate) = load_sample_wav("samples/hat.wav");
+    let mut hat = Sample::new(samples, sample_rate);
+    hat.add_effect(Box::new(Gain(100.0)));
+
     let mut composition = Composition::new();
-    composition.add_pattern(
-        "kick".to_string(),
-        PatternBuilder::new()
-            .config(PatternConfig::new(120, 1.0, 8))
-            .sample(load_sample_wav("samples/kick.wav"))
-            .trigger_beats(vec![1, 3, 5, 7, 8])
-            .effect(Effect::Crunchy(0.85))
-            .build()
-            .unwrap(),
-    );
-    composition.add_pattern(
-        "hat".to_string(),
-        PatternBuilder::new()
-            .config(PatternConfig::new(120, 1.0, 8))
-            .sample(load_sample_wav("samples/hat.wav"))
-            .trigger_beats(vec![1, 2, 3, 4, 5, 6, 7, 8])
-            // .effect(Effect::Crunchy(1.1))
-            .effect(Effect::Amplify(3.0))
-            .build()
-            .unwrap(),
-    );
-    composition.add_pattern(
-        "strings".to_string(),
-        PatternBuilder::new()
-            .config(PatternConfig::new(120, 1.0, 8))
-            .sample(load_sample_mp3("samples/strings.mp3"))
-            .trigger_beats(vec![1, 2, 4, 5, 6])
-            .effect(Effect::Crunchy(0.9))
-            .effect(Effect::Amplify(100.0))
-            // .effect(Effect::PitchShift(12))
-            .build()
-            .unwrap(),
-    );
+    composition.add_sound("kick".to_string(), Box::new(kick));
+    composition.add_sound("hat".to_string(), Box::new(hat));
 
     play_composition(&composition);
 }
