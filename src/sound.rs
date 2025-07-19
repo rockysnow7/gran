@@ -48,13 +48,15 @@ fn compress(samples: &[f32], speed: f32) -> Vec<f32> {
         .zip(final_window.iter())
         .map(|(a, b)| a * b)
         .collect();
-    final_grain_windowed.extend(vec![0.0; SAMPLES_PER_GRAIN - last_grain_len]);
+    let final_grain_padding = SAMPLES_PER_GRAIN - last_grain_len;
+    final_grain_windowed.extend(vec![0.0; final_grain_padding]);
     grains.push(final_grain_windowed);
 
     let mut buffer = grains.first().unwrap().clone();
     for grain in grains.iter().skip(1) {
         buffer = merge_grain_into_buffer(&buffer, grain, speed);
     }
+    buffer.truncate(buffer.len() - final_grain_padding);
 
     buffer
 }
@@ -64,18 +66,14 @@ fn normalize_sample_length(samples: Vec<f32>, target_length: usize) -> Vec<f32> 
         samples
     } else if samples.len() < target_length {
         // pad with silence
-        println!("padding with silence");
         let mut result = samples;
         result.extend(vec![0.0; target_length - result.len()]);
         result
     } else {
         // resample to exact target length
-        println!("resampling");
         let speed = target_length as f32 / samples.len() as f32;
-        // let resampled = resample(&samples, speed);
         let compressed = compress(&samples, speed);
 
-        // ensure exact length by truncating or padding
         if compressed.len() > target_length {
             compressed[0..target_length].to_vec()
         } else if compressed.len() < target_length {
@@ -85,15 +83,6 @@ fn normalize_sample_length(samples: Vec<f32>, target_length: usize) -> Vec<f32> 
         } else {
             compressed
         }
-
-        // let ratio = target_length as f32 / samples.len() as f32;
-        // let shift_semitones = -12.0 * ratio.log2();
-
-        // let mut pitch_shifter = PitchShifter::new(50, get_sample_rate());
-        // let mut output = vec![0.0; target_length];
-        // pitch_shifter.shift_pitch(16, shift_semitones, &result, &mut output);
-
-        // output
     }
 }
 
