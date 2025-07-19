@@ -1,20 +1,28 @@
 use crate::sound::{Grain, SAMPLES_PER_GRAIN, Composition, Sound};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{Device, Stream, StreamConfig, BufferSize};
-use std::sync::{Arc, Mutex};
+use cpal::{Device, Host, Stream, StreamConfig, BufferSize};
+use std::sync::{Arc, Mutex, LazyLock};
+
+static HOST: LazyLock<Host> = LazyLock::new(cpal::default_host);
+
+pub fn get_sample_rate() -> usize {
+    let device = HOST.default_output_device().unwrap();
+    let default_config = device.default_output_config().unwrap();
+
+    default_config.sample_rate().0 as usize
+}
 
 pub fn play_composition(composition: &Composition) {
-    let host = cpal::default_host();
-    let device = host.default_output_device().unwrap();
+    let device = HOST.default_output_device().unwrap();
     let default_config = device.default_output_config().unwrap();
 
     let mut stream_config: StreamConfig = default_config.clone().into();
     stream_config.buffer_size = BufferSize::Fixed(SAMPLES_PER_GRAIN as u32);
 
-    println!("Audio device: {}", device.name().unwrap());
-    println!("Audio config: {stream_config:?}");
+    // println!("Audio device: {}", device.name().unwrap());
+    // println!("Audio config: {stream_config:?}");
 
-    let sample_rate = stream_config.sample_rate.0 as usize;
+    let sample_rate = get_sample_rate();
 
     let err_fn = |err| eprintln!("Audio stream error: {err}");
 
@@ -25,6 +33,7 @@ pub fn play_composition(composition: &Composition) {
                 cloned_sound.update_sample_rate(sample_rate);
                 cloned_sound
             }).collect();
+            // let sounds = composition.sounds.values().map(|sound| sound.clone_box()).collect();
             build_stream::<f32>(&device, &stream_config, sounds, err_fn)
         },
         cpal::SampleFormat::I16 => {
@@ -33,6 +42,7 @@ pub fn play_composition(composition: &Composition) {
                 cloned_sound.update_sample_rate(sample_rate);
                 cloned_sound
             }).collect();
+            // let sounds = composition.sounds.values().map(|sound| sound.clone_box()).collect();
             build_stream::<i16>(&device, &stream_config, sounds, err_fn)
         },
         cpal::SampleFormat::U16 => {
@@ -41,6 +51,7 @@ pub fn play_composition(composition: &Composition) {
                 cloned_sound.update_sample_rate(sample_rate);
                 cloned_sound
             }).collect();
+            // let sounds = composition.sounds.values().map(|sound| sound.clone_box()).collect();
             build_stream::<u16>(&device, &stream_config, sounds, err_fn)
         },
         _ => panic!("Unsupported sample format"),

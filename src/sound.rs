@@ -1,7 +1,101 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, f32::consts::PI};
 
-const SECS_PER_BEAT: f32 = 1.5;
-pub const SAMPLES_PER_GRAIN: usize = 256;
+pub const SAMPLES_PER_GRAIN: usize = 512;
+
+/// Returns a Hanning window of the given size.
+fn hanning_window(grain_size: usize) -> Vec<f32> {
+    (0..grain_size)
+        .map(|i| 0.5 * (1.0 - (2.0 * PI * i as f32 / (grain_size as f32 - 1.0)).cos()))
+        .collect()
+}
+
+/// Merges a grain into a buffer, with the given overlap percentage. The grain is assumed to be windowed already.
+fn merge_grain_into_buffer(buffer: &[f32], grain: &[f32], overlap: f32) -> Vec<f32> {
+    let overlap_len = (overlap * SAMPLES_PER_GRAIN as f32) as usize;
+    let buffer_keep_len = buffer.len() - overlap_len;
+    let buffer_keep = &buffer[..buffer_keep_len];
+    let buffer_overlap = &buffer[buffer_keep_len..];
+    let grain_overlap = &grain[..overlap_len];
+    let grain_keep = &grain[overlap_len..];
+
+    let overlap: Vec<_> = buffer_overlap.iter().zip(grain_overlap.iter()).map(|(a, b)| a + b).collect();
+    let concat = [buffer_keep, &overlap, grain_keep].concat();
+
+    concat
+}
+
+/// Compresses a sample by the given speed factor. The speed must be between 0.0 and 1.0 (inclusive).
+fn compress(samples: &[f32], speed: f32) -> Vec<f32> {
+    assert!(speed > 0.0 && speed <= 1.0);
+
+    let grains: Vec<_> = samples.chunks(SAMPLES_PER_GRAIN).collect();
+    let standard_window = hanning_window(SAMPLES_PER_GRAIN);
+    let last_grain_len = grains.last().unwrap().len();
+    let final_window = hanning_window(last_grain_len);
+
+    let mut grains: Vec<Vec<_>> = grains[..grains.len() - 1]
+        .iter()
+        .map(|grain| grain
+            .iter()
+            .zip(standard_window.iter())
+            .map(|(a, b)| a * b)
+            .collect())
+        .collect();
+    let mut final_grain_windowed: Vec<_> = grains
+        .last()
+        .unwrap()
+        .iter()
+        .zip(final_window.iter())
+        .map(|(a, b)| a * b)
+        .collect();
+    final_grain_windowed.extend(vec![0.0; SAMPLES_PER_GRAIN - last_grain_len]);
+    grains.push(final_grain_windowed);
+
+    let mut buffer = grains.first().unwrap().clone();
+    for grain in grains.iter().skip(1) {
+        buffer = merge_grain_into_buffer(&buffer, grain, speed);
+    }
+
+    buffer
+}
+
+fn normalize_sample_length(samples: Vec<f32>, target_length: usize) -> Vec<f32> {
+    if samples.len() == target_length {
+        samples
+    } else if samples.len() < target_length {
+        // pad with silence
+        println!("padding with silence");
+        let mut result = samples;
+        result.extend(vec![0.0; target_length - result.len()]);
+        result
+    } else {
+        // resample to exact target length
+        println!("resampling");
+        let speed = target_length as f32 / samples.len() as f32;
+        // let resampled = resample(&samples, speed);
+        let compressed = compress(&samples, speed);
+
+        // ensure exact length by truncating or padding
+        if compressed.len() > target_length {
+            compressed[0..target_length].to_vec()
+        } else if compressed.len() < target_length {
+            let mut compressed = compressed;
+            compressed.extend(vec![0.0; target_length - compressed.len()]);
+            compressed
+        } else {
+            compressed
+        }
+
+        // let ratio = target_length as f32 / samples.len() as f32;
+        // let shift_semitones = -12.0 * ratio.log2();
+
+        // let mut pitch_shifter = PitchShifter::new(50, get_sample_rate());
+        // let mut output = vec![0.0; target_length];
+        // pitch_shifter.shift_pitch(16, shift_semitones, &result, &mut output);
+
+        // output
+    }
+}
 
 pub type Grain = [f32; SAMPLES_PER_GRAIN];
 
@@ -15,17 +109,26 @@ pub trait Sound: Send + Sync {
 
 pub struct Sample {
     samples: Vec<f32>,
+    secs_per_beat: f32,
     index: usize,
     effects: Vec<Box<dyn Effect>>,
 }
 
 impl Sample {
-    pub fn new(samples: Vec<f32>, sample_rate: usize) -> Self {
-        let mut samples = samples;
-        let samples_per_beat = (sample_rate as f32 * SECS_PER_BEAT) as usize;
-        samples.extend(vec![0.0; samples_per_beat - samples.len()]);
+    pub fn new(
+        samples: Vec<f32>,
+        sample_rate: usize,
+        secs_per_beat: f32,
+    ) -> Self {
+        let target_samples = (sample_rate as f32 * secs_per_beat) as usize;
+        let samples = normalize_sample_length(samples, target_samples);
 
-        Self { samples, index: 0, effects: Vec::new() }
+        Self {
+            samples,
+            secs_per_beat,
+            index: 0,
+            effects: Vec::new(),
+        }
     }
 }
 
@@ -49,13 +152,15 @@ impl Sound for Sample {
     }
 
     fn update_sample_rate(&mut self, sample_rate: usize) {
-        let samples_per_beat = (sample_rate as f32 * SECS_PER_BEAT) as usize;
-        self.samples.extend(vec![0.0; samples_per_beat - self.samples.len()]);
+        let target_samples = (sample_rate as f32 * self.secs_per_beat) as usize;
+        self.samples = normalize_sample_length(std::mem::take(&mut self.samples), target_samples);
+        // println!("updated sample_rate: {:?}", sample_rate);
     }
 
     fn clone_box(&self) -> Box<dyn Sound> {
         Box::new(Sample {
             samples: self.samples.clone(),
+            secs_per_beat: self.secs_per_beat,
             index: self.index,
             effects: self.effects.iter().map(|e| e.clone_box()).collect(),
         })

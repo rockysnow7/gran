@@ -30,11 +30,11 @@ fn load_sample_mp3(path: &str) -> (Vec<f32>, usize) {
 #[tokio::main]
 async fn main() {
     let (samples, sample_rate) = load_sample_wav("samples/kick.wav");
-    let mut kick = Sample::new(samples, sample_rate);
+    let mut kick = Sample::new(samples, sample_rate, 1.0);
     kick.add_effect(Box::new(Gain(100.0)));
 
     let (samples, sample_rate) = load_sample_wav("samples/hat.wav");
-    let mut hat = Sample::new(samples, sample_rate);
+    let mut hat = Sample::new(samples, sample_rate, 0.5);
     hat.add_effect(Box::new(Gain(100.0)));
 
     let mut composition = Composition::new();
