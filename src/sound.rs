@@ -1,4 +1,5 @@
 use std::{collections::HashMap, f32::consts::PI};
+use crate::effects::Effect;
 
 pub const SAMPLES_PER_GRAIN: usize = 512;
 
@@ -88,6 +89,12 @@ fn normalize_sample_length(samples: Vec<f32>, target_length: usize) -> Vec<f32> 
 
 pub type Grain = [f32; SAMPLES_PER_GRAIN];
 
+/// The data passed to an effect.
+pub struct SoundInput {
+    pub grain: Grain,
+    pub beat_number: usize,
+}
+
 pub trait Sound: Send + Sync {
     fn next_sample(&mut self) -> f32;
     fn next_grain(&mut self) -> Grain;
@@ -100,6 +107,7 @@ pub struct Sample {
     samples: Vec<f32>,
     secs_per_beat: f32,
     index: usize,
+    beat_number: usize,
     effects: Vec<Box<dyn Effect>>,
 }
 
@@ -116,6 +124,7 @@ impl Sample {
             samples,
             secs_per_beat,
             index: 0,
+            beat_number: 0,
             effects: Vec::new(),
         }
     }
@@ -123,7 +132,11 @@ impl Sample {
 
 impl Sound for Sample {
     fn next_sample(&mut self) -> f32 {
-        self.index = (self.index + 1) % self.samples.len();
+        self.index += 1;
+        if self.index >= self.samples.len() {
+            self.index %= self.samples.len();
+            self.beat_number += 1;
+        }
         self.samples[self.index]
     }
 
@@ -134,7 +147,11 @@ impl Sound for Sample {
         }
 
         for effect in &mut self.effects {
-            grain = effect.apply(grain);
+            let input = SoundInput {
+                grain,
+                beat_number: self.beat_number,
+            };
+            grain = effect.apply(input);
         }
 
         grain
@@ -143,7 +160,6 @@ impl Sound for Sample {
     fn update_sample_rate(&mut self, sample_rate: usize) {
         let target_samples = (sample_rate as f32 * self.secs_per_beat) as usize;
         self.samples = normalize_sample_length(std::mem::take(&mut self.samples), target_samples);
-        // println!("updated sample_rate: {:?}", sample_rate);
     }
 
     fn clone_box(&self) -> Box<dyn Sound> {
@@ -151,6 +167,7 @@ impl Sound for Sample {
             samples: self.samples.clone(),
             secs_per_beat: self.secs_per_beat,
             index: self.index,
+            beat_number: self.beat_number,
             effects: self.effects.iter().map(|e| e.clone_box()).collect(),
         })
     }
@@ -171,27 +188,5 @@ impl Composition {
 
     pub fn add_sound(&mut self, name: String, sound: Box<dyn Sound>) {
         self.sounds.insert(name, sound);
-    }
-}
-
-pub trait Effect: Send + Sync {
-    fn clone_box(&self) -> Box<dyn Effect>;
-    fn apply(&self, grain: Grain) -> Grain;
-}
-
-pub struct Gain(pub f32);
-
-impl Effect for Gain {
-    fn apply(&self, grain: Grain) -> Grain {
-        let mut new_grain = [0.0; SAMPLES_PER_GRAIN];
-        for i in 0..SAMPLES_PER_GRAIN {
-            new_grain[i] = grain[i] * self.0;
-        }
-
-        new_grain
-    }
-
-    fn clone_box(&self) -> Box<dyn Effect> {
-        Box::new(Gain(self.0))
     }
 }

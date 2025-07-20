@@ -1,6 +1,8 @@
 #![warn(clippy::all, clippy::pedantic, unused_crate_dependencies)]
 
-use gran::{play_composition, Sound, Composition, Sample, Gain};
+use gran::{
+    effects::{Gain, Pattern}, play_composition, sound::{Composition, Sample, Sound}
+};
 use rodio::{Decoder, Source};
 use std::{fs::File, io::BufReader};
 
@@ -30,16 +32,25 @@ fn load_sample_mp3(path: &str) -> (Vec<f32>, usize) {
 #[tokio::main]
 async fn main() {
     let (samples, sample_rate) = load_sample_wav("samples/kick.wav");
-    let mut kick = Sample::new(samples, sample_rate, 1.0);
+    let mut kick = Sample::new(samples, sample_rate, 0.5);
     kick.add_effect(Box::new(Gain(100.0)));
+    kick.add_effect(Box::new(Pattern {
+        trigger_beats: vec![0, 1, 3],
+        length: 4,
+    }));
 
     let (samples, sample_rate) = load_sample_wav("samples/hat.wav");
-    let mut hat = Sample::new(samples, sample_rate, 0.5);
+    let mut hat = Sample::new(samples, sample_rate, 0.25);
     hat.add_effect(Box::new(Gain(100.0)));
+
+    let (samples, sample_rate) = load_sample_mp3("samples/strings.mp3");
+    let mut strings = Sample::new(samples, sample_rate, 0.5);
+    strings.add_effect(Box::new(Gain(1000.0)));
 
     let mut composition = Composition::new();
     composition.add_sound("kick".to_string(), Box::new(kick));
     composition.add_sound("hat".to_string(), Box::new(hat));
+    composition.add_sound("strings".to_string(), Box::new(strings));
 
     play_composition(&composition);
 }
