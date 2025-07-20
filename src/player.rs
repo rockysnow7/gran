@@ -19,39 +19,33 @@ pub fn play_composition(composition: &Composition) {
     let mut stream_config: StreamConfig = default_config.clone().into();
     stream_config.buffer_size = BufferSize::Fixed(SAMPLES_PER_GRAIN as u32);
 
-    // println!("Audio device: {}", device.name().unwrap());
-    // println!("Audio config: {stream_config:?}");
-
     let sample_rate = get_sample_rate();
 
     let err_fn = |err| eprintln!("Audio stream error: {err}");
 
     let stream = match default_config.sample_format() {
         cpal::SampleFormat::F32 => {
-            let sounds: Vec<Box<dyn Sound>> = composition.sounds.values().map(|sound| {
+            let sounds: Vec<Box<dyn Sound>> = composition.0.iter().map(|sound| {
                 let mut cloned_sound = sound.clone_box();
                 cloned_sound.update_sample_rate(sample_rate);
                 cloned_sound
             }).collect();
-            // let sounds = composition.sounds.values().map(|sound| sound.clone_box()).collect();
             build_stream::<f32>(&device, &stream_config, sounds, err_fn)
         },
         cpal::SampleFormat::I16 => {
-            let sounds: Vec<Box<dyn Sound>> = composition.sounds.values().map(|sound| {
+            let sounds: Vec<Box<dyn Sound>> = composition.0.iter().map(|sound| {
                 let mut cloned_sound = sound.clone_box();
                 cloned_sound.update_sample_rate(sample_rate);
                 cloned_sound
             }).collect();
-            // let sounds = composition.sounds.values().map(|sound| sound.clone_box()).collect();
             build_stream::<i16>(&device, &stream_config, sounds, err_fn)
         },
         cpal::SampleFormat::U16 => {
-            let sounds: Vec<Box<dyn Sound>> = composition.sounds.values().map(|sound| {
+            let sounds: Vec<Box<dyn Sound>> = composition.0.iter().map(|sound| {
                 let mut cloned_sound = sound.clone_box();
                 cloned_sound.update_sample_rate(sample_rate);
                 cloned_sound
             }).collect();
-            // let sounds = composition.sounds.values().map(|sound| sound.clone_box()).collect();
             build_stream::<u16>(&device, &stream_config, sounds, err_fn)
         },
         _ => panic!("Unsupported sample format"),

@@ -1,6 +1,6 @@
 use crate::effects::Effect;
 use rodio::{Decoder, Source};
-use std::{collections::HashMap, f32::consts::PI, fs::File, io::BufReader};
+use std::{f32::consts::PI, fs::File, io::BufReader};
 
 pub const SAMPLES_PER_GRAIN: usize = 512;
 
@@ -109,7 +109,7 @@ pub struct Sample {
     secs_per_beat: f32,
     index: usize,
     beat_number: usize,
-    effects: Vec<Box<dyn Effect>>,
+    pub effects: Vec<Box<dyn Effect>>,
 }
 
 impl Sample {
@@ -266,16 +266,4 @@ impl SampleBuilder {
     }
 }
 
-pub struct Composition {
-    pub sounds: HashMap<String, Box<dyn Sound>>,
-}
-
-impl Composition {
-    pub fn new() -> Self {
-        Self { sounds: HashMap::new() }
-    }
-
-    pub fn add_sound(&mut self, name: String, sound: Box<dyn Sound>) {
-        self.sounds.insert(name, sound);
-    }
-}
+pub struct Composition(pub Vec<Box<dyn Sound>>);

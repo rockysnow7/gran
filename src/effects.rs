@@ -6,9 +6,9 @@ pub trait Effect: Send + Sync {
 }
 
 /// Adjusts the volume of a grain.
-pub struct Gain(pub f32);
+pub struct Volume(pub f32);
 
-impl Effect for Gain {
+impl Effect for Volume {
     fn apply(&self, input: SoundInput) -> Grain {
         let mut new_grain = [0.0; SAMPLES_PER_GRAIN];
         for i in 0..SAMPLES_PER_GRAIN {
@@ -19,32 +19,66 @@ impl Effect for Gain {
     }
 
     fn clone_box(&self) -> Box<dyn Effect> {
-        Box::new(Gain(self.0))
+        Box::new(Volume(self.0))
     }
 }
 
-/// Only plays the grain if the beat number is in a given set.
-pub struct Pattern {
-    /// The beats at which the grain should be played.
-    pub trigger_beats: Vec<usize>,
-    /// The length of the pattern in beats.
-    pub length: usize,
+/// A beat in a `Pattern`.
+#[derive(Clone, Copy)]
+pub enum PatternBeat {
+    /// The grain should be played on this beat.
+    Play,
+    /// The grain should not be played on this beat. Equivalent to `PlayWithVolume(0.0)`.
+    Skip,
+    /// The grain should be played on this beat, but with a volume multiplier.
+    PlayWithVolume(f32),
 }
+
+/// A pattern of beats.
+#[derive(Clone)]
+pub struct Pattern(pub Vec<PatternBeat>);
 
 impl Effect for Pattern {
     fn clone_box(&self) -> Box<dyn Effect> {
-        Box::new(Pattern {
-            trigger_beats: self.trigger_beats.clone(),
-            length: self.length,
-        })
+        Box::new(self.clone())
     }
 
     fn apply(&self, input: SoundInput) -> Grain {
-        let beat_number = input.beat_number % self.length;
-        if self.trigger_beats.contains(&beat_number) {
-            input.grain
-        } else {
-            [0.0; SAMPLES_PER_GRAIN]
+        let mut new_grain = [0.0; SAMPLES_PER_GRAIN];
+        for i in 0..SAMPLES_PER_GRAIN {
+            new_grain[i] = match self.0[input.beat_number % self.0.len()] {
+                PatternBeat::Play => input.grain[i],
+                PatternBeat::Skip => 0.0,
+                PatternBeat::PlayWithVolume(volume) => input.grain[i] * volume,
+            };
         }
+
+        new_grain
+    }
+}
+
+impl Pattern {
+    pub fn humanize(self, range_multiplier: f32) -> Self {
+        let mut new_pattern = self.0;
+        for beat in new_pattern.iter_mut() {
+            *beat = match beat {
+                PatternBeat::Play => {
+                    let volume = 1.0;
+                    let range = volume * range_multiplier;
+                    let random_offset = rand::random_range(-range..=range);
+
+                    PatternBeat::PlayWithVolume(volume + random_offset)
+                },
+                PatternBeat::Skip => PatternBeat::Skip,
+                PatternBeat::PlayWithVolume(volume) => {
+                    let range = *volume * range_multiplier;
+                    let random_offset = rand::random_range(-range..=range);
+
+                    PatternBeat::PlayWithVolume(*volume + random_offset)
+                },
+            };
+        }
+
+        Self(new_pattern)
     }
 }
