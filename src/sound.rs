@@ -1,5 +1,6 @@
-use std::{collections::HashMap, f32::consts::PI};
 use crate::effects::Effect;
+use rodio::{Decoder, Source};
+use std::{collections::HashMap, f32::consts::PI, fs::File, io::BufReader};
 
 pub const SAMPLES_PER_GRAIN: usize = 512;
 
@@ -174,6 +175,94 @@ impl Sound for Sample {
 
     fn add_effect(&mut self, effect: Box<dyn Effect>) {
         self.effects.push(effect);
+    }
+}
+
+// returns (samples, sample rate)
+fn load_sample_wav(path: &str) -> (Vec<f32>, usize) {
+    let mut reader = hound::WavReader::open(path).unwrap();
+    let sample_rate = reader.spec().sample_rate;
+    let samples: Vec<i32> = reader.samples::<i32>().map(|s| s.unwrap()).collect();
+
+    (samples.iter().map(|s| *s as f32 / i32::MAX as f32).collect(), sample_rate as usize)
+}
+
+// returns (samples, sample rate)
+fn load_sample_mp3(path: &str) -> (Vec<f32>, usize) {
+    let file = File::open(path).unwrap();
+    let source = Decoder::new(BufReader::new(file)).unwrap();
+    let sample_rate = source.sample_rate();
+
+    let samples: Vec<f32> = source
+        .into_iter()
+        .map(|sample| sample / i16::MAX as f32)
+        .collect();
+    
+    (samples, sample_rate as usize)
+}
+
+pub struct SampleBuilder {
+    samples: Option<Vec<f32>>,
+    sample_rate: Option<usize>,
+    secs_per_beat: Option<f32>,
+    effects: Vec<Box<dyn Effect>>,
+}
+
+impl SampleBuilder {
+    pub fn new() -> Self {
+        Self {
+            samples: None,
+            sample_rate: None,
+            secs_per_beat: None,
+            effects: Vec::new(),
+        }
+    }
+
+    pub fn samples(mut self, samples: Vec<f32>) -> Self {
+        self.samples = Some(samples);
+        self
+    }
+
+    pub fn with_sample_rate(mut self, sample_rate: usize) -> Self {
+        self.sample_rate = Some(sample_rate);
+        self
+    }
+
+    pub fn samples_from_file(mut self, path: &str) -> Self {
+        let (samples, sample_rate) = if path.ends_with(".wav") {
+            load_sample_wav(path)
+        } else if path.ends_with(".mp3") {
+            load_sample_mp3(path)
+        } else {
+            panic!("Unsupported file type: {}", path);
+        };
+
+        self.samples = Some(samples);
+        self.sample_rate = Some(sample_rate);
+        self
+    }
+
+    pub fn secs_per_beat(mut self, secs_per_beat: f32) -> Self {
+        self.secs_per_beat = Some(secs_per_beat);
+        self
+    }
+
+    pub fn effect(mut self, effect: Box<dyn Effect>) -> Self {
+        self.effects.push(effect);
+        self
+    }
+
+    pub fn build(self) -> Sample {
+        let samples = self.samples.unwrap();
+        let sample_rate = self.sample_rate.unwrap();
+        let secs_per_beat = self.secs_per_beat.unwrap();
+
+        let mut sample = Sample::new(samples, sample_rate, secs_per_beat);
+        for effect in self.effects {
+            sample.add_effect(effect);
+        }
+
+        sample
     }
 }
 

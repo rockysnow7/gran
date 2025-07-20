@@ -1,51 +1,38 @@
 #![warn(clippy::all, clippy::pedantic, unused_crate_dependencies)]
 
 use gran::{
-    effects::{Gain, Pattern}, play_composition, sound::{Composition, Sample, Sound}
+    play_composition,
+    sound::{Composition, SampleBuilder},
+    effects::{Gain, Pattern},
 };
-use rodio::{Decoder, Source};
-use std::{fs::File, io::BufReader};
-
-// returns (samples, sample rate)
-fn load_sample_wav(path: &str) -> (Vec<f32>, usize) {
-    let mut reader = hound::WavReader::open(path).unwrap();
-    let sample_rate = reader.spec().sample_rate;
-    let samples: Vec<i32> = reader.samples::<i32>().map(|s| s.unwrap()).collect();
-
-    (samples.iter().map(|s| *s as f32 / i32::MAX as f32).collect(), sample_rate as usize)
-}
-
-// returns (samples, sample rate)
-fn load_sample_mp3(path: &str) -> (Vec<f32>, usize) {
-    let file = File::open(path).unwrap();
-    let source = Decoder::new(BufReader::new(file)).unwrap();
-    let sample_rate = source.sample_rate();
-
-    let samples: Vec<f32> = source
-        .into_iter()
-        .map(|sample| sample as f32 / i16::MAX as f32)
-        .collect();
-    
-    (samples, sample_rate as usize)
-}
 
 #[tokio::main]
 async fn main() {
-    let (samples, sample_rate) = load_sample_wav("samples/kick.wav");
-    let mut kick = Sample::new(samples, sample_rate, 0.5);
-    kick.add_effect(Box::new(Gain(100.0)));
-    kick.add_effect(Box::new(Pattern {
-        trigger_beats: vec![0, 1, 3],
-        length: 4,
-    }));
+    let kick = SampleBuilder::new()
+        .samples_from_file("samples/kick.wav")
+        .secs_per_beat(0.5)
+        .effect(Box::new(Gain(100.0)))
+        .effect(Box::new(Pattern {
+            trigger_beats: vec![0, 1, 3],
+            length: 4,
+        }))
+        .build();
 
-    let (samples, sample_rate) = load_sample_wav("samples/hat.wav");
-    let mut hat = Sample::new(samples, sample_rate, 0.25);
-    hat.add_effect(Box::new(Gain(100.0)));
+    let hat = SampleBuilder::new()
+        .samples_from_file("samples/hat.wav")
+        .secs_per_beat(0.25)
+        .effect(Box::new(Gain(100.0)))
+        .build();
 
-    let (samples, sample_rate) = load_sample_mp3("samples/strings.mp3");
-    let mut strings = Sample::new(samples, sample_rate, 0.5);
-    strings.add_effect(Box::new(Gain(1000.0)));
+    let strings = SampleBuilder::new()
+        .samples_from_file("samples/strings.mp3")
+        .secs_per_beat(0.5)
+        .effect(Box::new(Gain(1500.0)))
+        .effect(Box::new(Pattern {
+            trigger_beats: vec![0],
+            length: 2,
+        }))
+        .build();
 
     let mut composition = Composition::new();
     composition.add_sound("kick".to_string(), Box::new(kick));
