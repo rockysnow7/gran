@@ -1,11 +1,12 @@
-use crate::sound::{Grain, SAMPLES_PER_GRAIN, SoundInput};
+use crate::sound::{Grain, SoundInput, SAMPLES_PER_GRAIN};
 
 pub trait Effect: Send + Sync {
     fn clone_box(&self) -> Box<dyn Effect>;
     fn apply(&self, input: SoundInput) -> Grain;
 }
 
-/// Adjusts the volume of a grain.
+#[derive(Clone, Copy)]
+/// Adjusts the volume of every grain.
 pub struct Volume(pub f32);
 
 impl Effect for Volume {
@@ -19,22 +20,22 @@ impl Effect for Volume {
     }
 
     fn clone_box(&self) -> Box<dyn Effect> {
-        Box::new(Volume(self.0))
+        Box::new(self.clone())
     }
 }
 
 /// A beat in a `Pattern`.
 #[derive(Clone, Copy)]
 pub enum PatternBeat {
-    /// The grain should be played on this beat.
+    /// The grain should be played on this beat. Equivalent to `PlayWithVolume(1.0)`.
     Play,
     /// The grain should not be played on this beat. Equivalent to `PlayWithVolume(0.0)`.
     Skip,
-    /// The grain should be played on this beat, but with a volume multiplier.
+    /// The grain should be played on this beat, with a volume multiplier.
     PlayWithVolume(f32),
 }
 
-/// A pattern of beats.
+/// Sequences a sound into a pattern of beats at given volumes.
 #[derive(Clone)]
 pub struct Pattern(pub Vec<PatternBeat>);
 
@@ -58,6 +59,7 @@ impl Effect for Pattern {
 }
 
 impl Pattern {
+    /// Randomly multiply the volume of each beat by a random value in the range `-range_multiplier..=range_multiplier`.
     pub fn humanize(self, range_multiplier: f32) -> Self {
         let mut new_pattern = self.0;
         for beat in new_pattern.iter_mut() {

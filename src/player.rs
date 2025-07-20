@@ -1,52 +1,37 @@
-use crate::sound::{Grain, SAMPLES_PER_GRAIN, Composition, Sound};
+use crate::sound::{Grain, SAMPLES_PER_GRAIN, Sound};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, Host, Stream, StreamConfig, BufferSize};
 use std::sync::{Arc, Mutex, LazyLock};
 
 static HOST: LazyLock<Host> = LazyLock::new(cpal::default_host);
-
-pub fn get_sample_rate() -> usize {
+pub static SAMPLE_RATE: LazyLock<usize> = LazyLock::new(|| {
     let device = HOST.default_output_device().unwrap();
     let default_config = device.default_output_config().unwrap();
 
     default_config.sample_rate().0 as usize
-}
+});
 
-pub fn play_composition(composition: &Composition) {
+pub fn play_sound(sound: &mut dyn Sound) {
     let device = HOST.default_output_device().unwrap();
     let default_config = device.default_output_config().unwrap();
 
     let mut stream_config: StreamConfig = default_config.clone().into();
     stream_config.buffer_size = BufferSize::Fixed(SAMPLES_PER_GRAIN as u32);
 
-    let sample_rate = get_sample_rate();
-
     let err_fn = |err| eprintln!("Audio stream error: {err}");
 
     let stream = match default_config.sample_format() {
         cpal::SampleFormat::F32 => {
-            let sounds: Vec<Box<dyn Sound>> = composition.0.iter().map(|sound| {
-                let mut cloned_sound = sound.clone_box();
-                cloned_sound.update_sample_rate(sample_rate);
-                cloned_sound
-            }).collect();
-            build_stream::<f32>(&device, &stream_config, sounds, err_fn)
+            sound.update_sample_rate(*SAMPLE_RATE);
+            build_stream::<f32>(&device, &stream_config, vec![sound.clone_box()], err_fn)
         },
         cpal::SampleFormat::I16 => {
-            let sounds: Vec<Box<dyn Sound>> = composition.0.iter().map(|sound| {
-                let mut cloned_sound = sound.clone_box();
-                cloned_sound.update_sample_rate(sample_rate);
-                cloned_sound
-            }).collect();
-            build_stream::<i16>(&device, &stream_config, sounds, err_fn)
+            sound.update_sample_rate(*SAMPLE_RATE);
+            build_stream::<i16>(&device, &stream_config, vec![sound.clone_box()], err_fn)
         },
         cpal::SampleFormat::U16 => {
-            let sounds: Vec<Box<dyn Sound>> = composition.0.iter().map(|sound| {
-                let mut cloned_sound = sound.clone_box();
-                cloned_sound.update_sample_rate(sample_rate);
-                cloned_sound
-            }).collect();
-            build_stream::<u16>(&device, &stream_config, sounds, err_fn)
+            sound.update_sample_rate(*SAMPLE_RATE);
+            build_stream::<u16>(&device, &stream_config, vec![sound.clone_box()], err_fn)
         },
         _ => panic!("Unsupported sample format"),
     }.unwrap();

@@ -1,7 +1,7 @@
 #![warn(clippy::all, clippy::pedantic, unused_crate_dependencies)]
 
 use gran::{
-    effects::{Pattern, PatternBeat, Volume}, play_composition, sound::{Composition, SampleBuilder}
+    effects::{Pattern, PatternBeat, Volume}, play_sound, sound::{CompositionBuilder, SampleBuilder}
 };
 
 #[tokio::main]
@@ -54,7 +54,22 @@ async fn main() {
         ]).humanize(0.2)))
         .build();
 
-    let composition = Composition(vec![Box::new(kick), Box::new(hat)]);
+    let drums = CompositionBuilder::new()
+        .sound(Box::new(kick))
+        .sound(Box::new(hat))
+        .build();
 
-    play_composition(&composition);
+    let strings = SampleBuilder::new()
+        .samples_from_file("samples/strings.mp3")
+        .secs_per_beat(1.0)
+        .effect(Box::new(Volume(400.0)))
+        .build();
+
+    let mut full = CompositionBuilder::new()
+        .sound(Box::new(drums))
+        .sound(Box::new(strings))
+        .effect(Box::new(Volume(0.8)))
+        .build();
+
+    play_sound(&mut full);
 }

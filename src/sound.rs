@@ -266,4 +266,92 @@ impl SampleBuilder {
     }
 }
 
-pub struct Composition(pub Vec<Box<dyn Sound>>);
+pub struct Composition {
+    sounds: Vec<Box<dyn Sound>>,
+    effects: Vec<Box<dyn Effect>>,
+    beat_number: usize,
+}
+
+impl Sound for Composition {
+    fn next_sample(&mut self) -> f32 {
+        self.beat_number += 1;
+
+        self.sounds.iter_mut().map(|sound| sound.next_sample()).sum()
+    }
+
+    fn next_grain(&mut self) -> Grain {
+        let mut grain = [0.0; SAMPLES_PER_GRAIN];
+        for sound in &mut self.sounds {
+            let sound_grain = sound.next_grain();
+            for (i, sample) in sound_grain.iter().enumerate() {
+                grain[i] += sample;
+            }
+        }
+
+        for effect in &mut self.effects {
+            let input = SoundInput {
+                grain,
+                beat_number: self.beat_number,
+            };
+            grain = effect.apply(input);
+        }
+
+        grain
+    }
+
+    fn add_effect(&mut self, effect: Box<dyn Effect>) {
+        self.effects.push(effect);
+    }
+
+    fn update_sample_rate(&mut self, sample_rate: usize) {
+        for sound in &mut self.sounds {
+            sound.update_sample_rate(sample_rate);
+        }
+    }
+
+    fn clone_box(&self) -> Box<dyn Sound> {
+        let sounds = self.sounds
+            .iter()
+            .map(|sound| sound.clone_box())
+            .collect();
+
+        let effects = self.effects
+            .iter()
+            .map(|e| e.clone_box())
+            .collect();
+
+        Box::new(Self {
+            sounds,
+            effects,
+            beat_number: 0,
+        })
+    }
+}
+
+pub struct CompositionBuilder {
+    sounds: Vec<Box<dyn Sound>>,
+    effects: Vec<Box<dyn Effect>>,
+}
+
+impl CompositionBuilder {
+    pub fn new() -> Self {
+        Self { sounds: Vec::new(), effects: Vec::new() }
+    }
+
+    pub fn sound(mut self, sound: Box<dyn Sound>) -> Self {
+        self.sounds.push(sound);
+        self
+    }
+
+    pub fn effect(mut self, effect: Box<dyn Effect>) -> Self {
+        self.effects.push(effect);
+        self
+    }
+
+    pub fn build(self) -> Composition {
+        let sounds = self.sounds;
+        let effects = self.effects;
+
+        Composition { sounds, effects, beat_number: 0 }
+    }
+}
