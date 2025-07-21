@@ -1,4 +1,4 @@
-use crate::sound::{Grain, SAMPLES_PER_GRAIN, Sound};
+use crate::sounds::{Grain, SAMPLES_PER_GRAIN, Sound};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, Host, Stream, StreamConfig, BufferSize};
 use std::sync::{Arc, Mutex, LazyLock};

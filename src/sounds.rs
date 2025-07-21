@@ -91,7 +91,7 @@ fn normalize_sample_length(samples: Vec<f32>, target_length: usize) -> Vec<f32> 
 pub type Grain = [f32; SAMPLES_PER_GRAIN];
 
 /// The data passed to an effect.
-pub struct SoundInput {
+pub struct EffectInput {
     pub grain: Grain,
     pub beat_number: usize,
 }
@@ -148,7 +148,7 @@ impl Sound for Sample {
         }
 
         for effect in &mut self.effects {
-            let input = SoundInput {
+            let input = EffectInput {
                 grain,
                 beat_number: self.beat_number,
             };
@@ -289,7 +289,7 @@ impl Sound for Composition {
         }
 
         for effect in &mut self.effects {
-            let input = SoundInput {
+            let input = EffectInput {
                 grain,
                 beat_number: self.beat_number,
             };
