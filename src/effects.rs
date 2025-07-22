@@ -1,4 +1,6 @@
-use crate::{oscillators::Number, sounds::{EffectInput, Grain, SAMPLES_PER_GRAIN}};
+use std::f32::consts::PI;
+
+use crate::{oscillators::Number, player::SAMPLE_RATE, sounds::{EffectInput, Grain, SAMPLES_PER_GRAIN}};
 
 pub trait Effect: Send + Sync {
     fn clone_box(&self) -> Box<dyn Effect>;
@@ -149,6 +151,109 @@ impl Effect for ADSR {
             for i in 0..SAMPLES_PER_GRAIN {
                 new_grain[i] = input.grain[i] * release_amplitude_multiplier;
             }
+        }
+
+        new_grain
+    }
+}
+
+#[derive(Clone)]
+pub enum Filter {
+    LowPass {
+        cutoff_frequency: Number,
+        resonance: Number,
+        state_1: f32,
+        state_2: f32,
+        previous_cutoff: f32,
+    },
+    HighPass {
+        cutoff_frequency: Number,
+        resonance: Number,
+        state_1: f32,
+        state_2: f32,
+        previous_cutoff: f32,
+    },
+}
+
+impl Filter {
+    pub fn low_pass(cutoff_frequency: Number, resonance: Number) -> Self {
+        Self::LowPass {
+            cutoff_frequency,
+            resonance,
+            state_1: 0.0,
+            state_2: 0.0,
+            previous_cutoff: 0.0,
+        }
+    }
+
+    pub fn high_pass(cutoff_frequency: Number, resonance: Number) -> Self {
+        Self::HighPass {
+            cutoff_frequency,
+            resonance,
+            state_1: 0.0,
+            state_2: 0.0,
+            previous_cutoff: 0.0,
+        }
+    }
+
+    pub fn process_sample(&mut self, sample: f32) -> f32 {
+        match self {
+            Self::LowPass { cutoff_frequency, resonance, state_1, state_2, previous_cutoff } => {
+                let cutoff = cutoff_frequency.next_value();
+                let resonance = resonance.next_value();
+                assert!(resonance < 0.95); // to save your ears
+
+                let cuttoff_smooth = 0.9 * *previous_cutoff + 0.1 * cutoff;
+                *previous_cutoff = cuttoff_smooth;
+
+                let omega = 2.0 * PI * cuttoff_smooth / *SAMPLE_RATE as f32;
+                let g = omega.tan();
+                let k = 2.0 - 2.0 * resonance;
+
+                let v_1 = (sample - *state_2 - k * *state_1) / (1.0 + k * g + g * g);
+                let v_2 = *state_1 + g * v_1;
+                let v_3 = *state_2 + g * v_2;
+
+                *state_1 = v_2;
+                *state_2 = v_3;
+
+                v_3
+            },
+            Self::HighPass { cutoff_frequency, resonance, state_1, state_2, previous_cutoff } => {
+                let cutoff = cutoff_frequency.next_value();
+                let resonance = resonance.next_value();
+                assert!(resonance < 0.95); // to save your ears
+
+                let cuttoff_smooth = 0.9 * *previous_cutoff + 0.1 * cutoff;
+                *previous_cutoff = cuttoff_smooth;
+
+                let omega = 2.0 * PI * cuttoff_smooth / *SAMPLE_RATE as f32;
+                let g = omega.tan();
+                let k = 2.0 - 2.0 * resonance;
+
+                let v_1 = (sample - *state_2 - k * *state_1) / (1.0 + k * g + g * g);
+                let v_2 = *state_1 + g * v_1;
+                let v_3 = *state_2 + g * v_2;
+
+                *state_1 = v_2;
+                *state_2 = v_3;
+
+                v_1
+            },
+        }
+    }
+}
+
+impl Effect for Filter {
+    fn clone_box(&self) -> Box<dyn Effect> {
+        Box::new(self.clone())
+    }
+
+    fn apply(&mut self, input: EffectInput) -> Grain {
+        let mut new_grain = [0.0; SAMPLES_PER_GRAIN];
+
+        for i in 0..SAMPLES_PER_GRAIN {
+            new_grain[i] = self.process_sample(input.grain[i]);
         }
 
         new_grain
