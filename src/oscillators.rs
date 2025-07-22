@@ -27,7 +27,7 @@ impl Sound for Oscillator {
         self.index += 1; // this is gross, should figure out something nicer
         let dt = 1.0 / *SAMPLE_RATE as f32;
 
-        self.wave_function.next_value_with_phase(&mut self.phase, dt)
+        self.wave_function.next_value(&mut self.phase, dt)
     }
 
     fn next_grain(&mut self) -> Grain {
@@ -113,22 +113,25 @@ pub enum WaveFunction {
         amplitude: Number,
         phase: Number,
     },
+    Square {
+        frequency: Number,
+        amplitude: Number,
+        phase: Number,
+    },
+    Triangle {
+        frequency: Number,
+        amplitude: Number,
+        phase: Number,
+    },
+    Sawtooth {
+        frequency: Number,
+        amplitude: Number,
+        phase: Number,
+    },
 }
 
 impl WaveFunction {
-    pub fn next_value(&mut self, t: f32) -> f32 {
-        match self {
-            WaveFunction::Sine { frequency, amplitude, phase } => {
-                let frequency = frequency.next_value();
-                let amplitude = amplitude.next_value();
-                let phase = phase.next_value();
-
-                amplitude * (2.0 * PI * frequency * t + phase).sin()
-            }
-        }
-    }
-
-    pub fn next_value_with_phase(&mut self, accumulated_phase: &mut f32, dt: f32) -> f32 {
+    pub fn next_value(&mut self, accumulated_phase: &mut f32, dt: f32) -> f32 {
         match self {
             WaveFunction::Sine { frequency, amplitude, phase } => {
                 let freq = frequency.next_value();
@@ -139,7 +142,56 @@ impl WaveFunction {
                 *accumulated_phase = *accumulated_phase % (2.0 * PI);
                 
                 amp * (*accumulated_phase + phase_offset).sin()
-            }
+            },
+            WaveFunction::Square { frequency, amplitude, phase } => {
+                let freq = frequency.next_value();
+                let amp = amplitude.next_value();
+                let phase_offset = phase.next_value();
+
+                *accumulated_phase += 2.0 * PI * freq * dt;
+                *accumulated_phase = *accumulated_phase % (2.0 * PI);
+
+                let sin = (*accumulated_phase + phase_offset).sin();
+                let sign = if sin > 0.0 { 1.0 } else { -1.0 };
+
+                amp * sign
+            },
+            WaveFunction::Triangle { frequency, amplitude, phase } => {
+                let freq = frequency.next_value();
+                let amp = amplitude.next_value();
+                let phase_offset = phase.next_value();
+
+                *accumulated_phase += 2.0 * PI * freq * dt;
+                *accumulated_phase = *accumulated_phase % (2.0 * PI);
+
+                // normaalise phase from radians to [0, 1]
+                let normalized_phase = (*accumulated_phase + phase_offset) / (2.0 * PI);
+                let normalized_phase = normalized_phase - normalized_phase.floor();
+
+                let triangle = if normalized_phase < 0.5 {
+                    4.0 * normalized_phase - 1.0  // -1 to 1 for first half
+                } else {
+                    3.0 - 4.0 * normalized_phase   // 1 to -1 for second half
+                };
+
+                amp * triangle
+            },
+            WaveFunction::Sawtooth { frequency, amplitude, phase } => {
+                let freq = frequency.next_value();
+                let amp = amplitude.next_value();
+                let phase_offset = phase.next_value();
+
+                *accumulated_phase += 2.0 * PI * freq * dt;
+                *accumulated_phase = *accumulated_phase % (2.0 * PI);
+
+                // normaalise phase from radians to [0, 1]
+                let normalized_phase = (*accumulated_phase + phase_offset) / (2.0 * PI);
+                let normalized_phase = normalized_phase - normalized_phase.floor();
+
+                let sawtooth = 2.0 * normalized_phase - 1.0;
+
+                amp * sawtooth
+            },
         }
     }
 }
