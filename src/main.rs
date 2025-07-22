@@ -59,24 +59,24 @@ async fn main() {
         .sound(Box::new(hat))
         .build();
 
-    let triangle = OscillatorBuilder::new()
-        .wave_function(WaveFunction::Triangle {
-            frequency: Number::sine_around(220.0, 5.0, 5.0),
-            amplitude: Number::number(1.0),
-            phase: Number::number(0.0),
-        })
-        .beat_length(1.0)
-        .effect(Box::new(Volume(Number::number(0.2))))
-        .effect(Box::new(Pattern(vec![
-            PatternBeat::Play,
-            PatternBeat::Skip,
-        ])))
-        .effect(Box::new(ADSR::new(0.1, 0.2, 0.5, 0.2)))
-        .build();
+    // let triangle = OscillatorBuilder::new()
+    //     .wave_function(WaveFunction::Triangle {
+    //         frequency: Number::sine_around(220.0, 5.0, 5.0),
+    //         amplitude: Number::number(1.0),
+    //         phase: Number::number(0.0),
+    //     })
+    //     .beat_length(1.0)
+    //     .effect(Box::new(Volume(Number::number(0.2))))
+    //     .effect(Box::new(Pattern(vec![
+    //         PatternBeat::Play,
+    //         PatternBeat::Skip,
+    //     ])))
+    //     .effect(Box::new(ADSR::new(0.1, 0.2, 0.5, 0.2)))
+    //     .build();
 
     let mut full = CompositionBuilder::new()
         .sound(Box::new(drums))
-        .sound(Box::new(triangle))
+        // .sound(Box::new(triangle))
         .effect(Box::new(Volume(Number::number(0.5))))
         .build();
 

@@ -344,6 +344,12 @@ impl Sound for Composition {
         }
 
         let samples_per_beat = *SAMPLE_RATE as f32 * self.secs_per_beat;
+        self.index += SAMPLES_PER_GRAIN;
+        if self.index >= samples_per_beat as usize {
+            self.index = 0;
+            self.beat_number += 1;
+        }
+
         let time_since_start_of_beat = self.index as f32 / samples_per_beat;
         for effect in &mut self.effects {
             let input = EffectInput {
