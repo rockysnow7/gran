@@ -77,6 +77,7 @@ async fn main() {
     let mut full = CompositionBuilder::new()
         .sound(Box::new(drums))
         .sound(Box::new(triangle))
+        .effect(Box::new(Volume(Number::number(0.5))))
         .build();
 
     play_sound(&mut full);

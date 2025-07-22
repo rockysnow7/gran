@@ -116,7 +116,7 @@ impl Effect for ADSR {
     }
 
     fn apply(&mut self, input: EffectInput) -> Grain {
-        // println!("input.time_since_start_of_beat: {}", input.time_since_start_of_beat);
+        assert!(self.attack_duration + self.decay_duration + self.sustain_duration < input.secs_per_beat);
 
         let sustain_start = self.attack_duration + self.decay_duration;
         let release_start = sustain_start + self.sustain_duration;
