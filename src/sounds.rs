@@ -1,4 +1,6 @@
-use crate::effects::Effect;
+use crate::{effects::Effect, player::SAMPLE_RATE};
+use num_integer::gcd;
+use num::{rational::BigRational, ToPrimitive};
 use rodio::{Decoder, Source};
 use std::{f32::consts::PI, fs::File, io::BufReader};
 
@@ -94,6 +96,8 @@ pub type Grain = [f32; SAMPLES_PER_GRAIN];
 pub struct EffectInput {
     pub grain: Grain,
     pub beat_number: usize,
+    pub time_since_start_of_beat: f32,
+    pub secs_per_beat: f32,
 }
 
 pub trait Sound: Send + Sync {
@@ -102,6 +106,7 @@ pub trait Sound: Send + Sync {
     fn add_effect(&mut self, effect: Box<dyn Effect>);
     fn update_sample_rate(&mut self, sample_rate: usize);
     fn clone_box(&self) -> Box<dyn Sound>;
+    fn secs_per_beat(&self) -> f32;
 }
 
 pub struct Sample {
@@ -132,6 +137,10 @@ impl Sample {
 }
 
 impl Sound for Sample {
+    fn secs_per_beat(&self) -> f32 {
+        self.secs_per_beat
+    }
+
     fn next_sample(&mut self) -> f32 {
         self.index += 1;
         if self.index >= self.samples.len() {
@@ -147,10 +156,13 @@ impl Sound for Sample {
             *sample = self.next_sample();
         }
 
+        let time_since_start_of_beat = self.index as f32 / self.samples.len() as f32;
         for effect in &mut self.effects {
             let input = EffectInput {
                 grain,
                 beat_number: self.beat_number,
+                time_since_start_of_beat,
+                secs_per_beat: self.secs_per_beat,
             };
             grain = effect.apply(input);
         }
@@ -266,15 +278,58 @@ impl SampleBuilder {
     }
 }
 
+fn lcm(a: f32, b: f32) -> f32 {
+    let rat_a = BigRational::from_float(a).unwrap();
+    let rat_b = BigRational::from_float(b).unwrap();
+
+    let num_a = rat_a.numer().clone();
+    let den_a = rat_a.denom().clone();
+    let num_b = rat_b.numer().clone();
+    let den_b = rat_b.denom().clone();
+
+    let num_lcm = (num_a.clone() * num_b.clone()) / gcd(num_a, num_b);
+    let den_gcd = gcd(den_a, den_b);
+
+    let result = BigRational::new(num_lcm, den_gcd);
+
+    result.to_f32().unwrap()
+}
+
 pub struct Composition {
     sounds: Vec<Box<dyn Sound>>,
     effects: Vec<Box<dyn Effect>>,
+    index: usize,
     beat_number: usize,
+    secs_per_beat: f32,
+}
+
+impl Composition {
+    pub fn new(sounds: Vec<Box<dyn Sound>>, effects: Vec<Box<dyn Effect>>) -> Self {
+        // get the least common multiple of the secs_per_beat of each sound
+        let secs_per_beat = sounds.iter().map(|sound| sound.secs_per_beat()).reduce(|a, b| lcm(a, b)).unwrap();
+
+        Self {
+            sounds,
+            effects,
+            index: 0,
+            beat_number: 0,
+            secs_per_beat,
+        }
+    }
 }
 
 impl Sound for Composition {
+    fn secs_per_beat(&self) -> f32 {
+        self.secs_per_beat
+    }
+
     fn next_sample(&mut self) -> f32 {
-        self.beat_number += 1;
+        let samples_per_beat = *SAMPLE_RATE as f32 * self.secs_per_beat;
+        self.index += 1;
+        if self.index >= samples_per_beat as usize {
+            self.index = 0;
+            self.beat_number += 1;
+        }
 
         self.sounds.iter_mut().map(|sound| sound.next_sample()).sum()
     }
@@ -288,10 +343,14 @@ impl Sound for Composition {
             }
         }
 
+        let samples_per_beat = *SAMPLE_RATE as f32 * self.secs_per_beat;
+        let time_since_start_of_beat = self.index as f32 / samples_per_beat;
         for effect in &mut self.effects {
             let input = EffectInput {
                 grain,
                 beat_number: self.beat_number,
+                time_since_start_of_beat,
+                secs_per_beat: self.secs_per_beat,
             };
             grain = effect.apply(input);
         }
@@ -323,7 +382,9 @@ impl Sound for Composition {
         Box::new(Self {
             sounds,
             effects,
-            beat_number: 0,
+            index: self.index,
+            beat_number: self.beat_number,
+            secs_per_beat: self.secs_per_beat,
         })
     }
 }
@@ -352,6 +413,6 @@ impl CompositionBuilder {
         let sounds = self.sounds;
         let effects = self.effects;
 
-        Composition { sounds, effects, beat_number: 0 }
+        Composition::new(sounds, effects)
     }
 }

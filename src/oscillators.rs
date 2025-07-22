@@ -6,6 +6,7 @@ pub struct Oscillator {
     index: usize,
     /// The length of a beat in seconds.
     beat_length: f32,
+    beat_number: usize,
     effects: Vec<Box<dyn Effect>>,
     phase: f32,
 }
@@ -16,6 +17,7 @@ impl Clone for Oscillator {
             wave_function: self.wave_function.clone(),
             index: self.index,
             beat_length: self.beat_length,
+            beat_number: self.beat_number,
             effects: self.effects.iter().map(|e| e.clone_box()).collect(),
             phase: self.phase,
         }
@@ -23,8 +25,18 @@ impl Clone for Oscillator {
 }
 
 impl Sound for Oscillator {
+    fn secs_per_beat(&self) -> f32 {
+        self.beat_length
+    }
+
     fn next_sample(&mut self) -> f32 {
-        self.index += 1; // this is gross, should figure out something nicer
+        let samples_per_beat = *SAMPLE_RATE as f32 * self.beat_length;
+        self.index += 1;
+        if self.index >= samples_per_beat as usize {
+            self.beat_number += 1;
+            self.index = 0;
+        }
+
         let dt = 1.0 / *SAMPLE_RATE as f32;
 
         self.wave_function.next_value(&mut self.phase, dt)
@@ -37,10 +49,13 @@ impl Sound for Oscillator {
         }
 
         for effect in &mut self.effects {
-            let beat_number = self.index / (*SAMPLE_RATE as f32 * self.beat_length) as usize;
+            let samples_per_beat = *SAMPLE_RATE as f32 * self.beat_length;
+            let time_since_start_of_beat = self.index as f32 / samples_per_beat;
             let input = EffectInput {
                 grain,
-                beat_number,
+                beat_number: self.beat_number,
+                time_since_start_of_beat,
+                secs_per_beat: self.beat_length,
             };
             grain = effect.apply(input);
         }
@@ -55,6 +70,7 @@ impl Sound for Oscillator {
             wave_function: self.wave_function.clone(),
             index: self.index,
             beat_length: self.beat_length,
+            beat_number: self.beat_number,
             effects: self.effects.iter().map(|e| e.clone_box()).collect(),
             phase: self.phase,
         })
@@ -100,6 +116,7 @@ impl OscillatorBuilder {
             wave_function: Box::new(self.wave_function.unwrap()),
             index: 0,
             beat_length: self.beat_length.unwrap(),
+            beat_number: 0,
             effects: self.effects,
             phase: 0.0,
         }
@@ -233,6 +250,20 @@ impl Number {
 
     pub fn oscillator(oscillator: Oscillator) -> Self {
         Number::Oscillator { oscillator, plus: 0.0, mul: 1.0 }
+    }
+
+    /// Create a sine wave that oscillates around a middle value with a given frequency.
+    pub fn sine_around(middle: f32, plus_or_minus: f32, frequency: f32) -> Self {
+        let oscillator = OscillatorBuilder::new()
+            .wave_function(WaveFunction::Sine {
+                frequency: Number::number(frequency),
+                amplitude: Number::number(plus_or_minus),
+                phase: Number::number(0.0),
+            })
+            .beat_length(0.0)
+            .build();
+
+        Number::oscillator(oscillator).plus_f32(middle)
     }
 
     pub fn next_value(&mut self) -> f32 {

@@ -85,3 +85,72 @@ impl Pattern {
         Self(new_pattern)
     }
 }
+
+#[derive(Clone)]
+pub struct ADSR {
+    pub attack_duration: f32,
+    pub decay_duration: f32,
+    pub sustain_amplitude_multiplier: f32,
+    pub sustain_duration: f32,
+}
+
+impl ADSR {
+    pub fn new(
+        attack_duration: f32,
+        decay_duration: f32,
+        sustain_amplitude_multiplier: f32,
+        sustain_duration: f32,
+    ) -> Self {
+        Self {
+            attack_duration,
+            decay_duration,
+            sustain_amplitude_multiplier,
+            sustain_duration,
+        }
+    }
+}
+
+impl Effect for ADSR {
+    fn clone_box(&self) -> Box<dyn Effect> {
+        Box::new(self.clone())
+    }
+
+    fn apply(&mut self, input: EffectInput) -> Grain {
+        // println!("input.time_since_start_of_beat: {}", input.time_since_start_of_beat);
+
+        let sustain_start = self.attack_duration + self.decay_duration;
+        let release_start = sustain_start + self.sustain_duration;
+
+        let mut new_grain = [0.0; SAMPLES_PER_GRAIN];
+        if input.time_since_start_of_beat < self.attack_duration {
+            // attack
+            let attack_progress = input.time_since_start_of_beat / self.attack_duration;
+            for i in 0..SAMPLES_PER_GRAIN {
+                new_grain[i] = input.grain[i] * attack_progress;
+            }
+        } else if input.time_since_start_of_beat < sustain_start {
+            // decay
+            let sustain_amplitude_multiplier_diff = 1.0 - self.sustain_amplitude_multiplier;
+            let decay_progress = (input.time_since_start_of_beat - self.attack_duration) / self.decay_duration;
+            let sustain_amplitude_multiplier = 1.0 - sustain_amplitude_multiplier_diff * decay_progress;
+            for i in 0..SAMPLES_PER_GRAIN {
+                new_grain[i] = input.grain[i] * sustain_amplitude_multiplier;
+            }
+        } else if input.time_since_start_of_beat < release_start {
+            // sustain
+            for i in 0..SAMPLES_PER_GRAIN {
+                new_grain[i] = input.grain[i] * self.sustain_amplitude_multiplier;
+            }
+        } else {
+            // release
+            let release_duration = input.secs_per_beat - release_start;
+            let release_progress = (input.time_since_start_of_beat - release_start) / release_duration;
+            let release_amplitude_multiplier = self.sustain_amplitude_multiplier * (1.0 - release_progress);
+            for i in 0..SAMPLES_PER_GRAIN {
+                new_grain[i] = input.grain[i] * release_amplitude_multiplier;
+            }
+        }
+
+        new_grain
+    }
+}
