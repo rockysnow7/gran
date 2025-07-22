@@ -70,14 +70,14 @@ impl Pattern {
                     let range = volume * range_multiplier;
                     let random_offset = rand::random_range(-range..=range);
 
-                    PatternBeat::PlayWithVolume(Number::Number(volume + random_offset))
+                    PatternBeat::PlayWithVolume(Number::number(volume + random_offset))
                 },
                 PatternBeat::Skip => PatternBeat::Skip,
                 PatternBeat::PlayWithVolume(volume) => {
                     let range = volume.next_value() * range_multiplier;
                     let random_offset = rand::random_range(-range..=range);
 
-                    PatternBeat::PlayWithVolume(volume.clone().plus(random_offset))
+                    PatternBeat::PlayWithVolume(volume.clone().plus_f32(random_offset))
                 },
             };
         }

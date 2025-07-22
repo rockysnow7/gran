@@ -1,21 +1,23 @@
-use std::sync::Arc;
-use crate::{effects::Effect, player::SAMPLE_RATE, sounds::{Grain, Sound, EffectInput, SAMPLES_PER_GRAIN}};
+use std::f32::consts::PI;
+use crate::{effects::Effect, player::SAMPLE_RATE, sounds::{EffectInput, Grain, Sound, SAMPLES_PER_GRAIN}};
 
 pub struct Oscillator {
-    function: Arc<dyn Fn(f32) -> f32 + Send + Sync>,
+    wave_function: Box<WaveFunction>,
     index: usize,
     /// The length of a beat in seconds.
     beat_length: f32,
     effects: Vec<Box<dyn Effect>>,
+    phase: f32,
 }
 
 impl Clone for Oscillator {
     fn clone(&self) -> Self {
         Self {
-            function: Arc::clone(&self.function),
+            wave_function: self.wave_function.clone(),
             index: self.index,
             beat_length: self.beat_length,
             effects: self.effects.iter().map(|e| e.clone_box()).collect(),
+            phase: self.phase,
         }
     }
 }
@@ -23,9 +25,9 @@ impl Clone for Oscillator {
 impl Sound for Oscillator {
     fn next_sample(&mut self) -> f32 {
         self.index += 1; // this is gross, should figure out something nicer
-        let t = self.index as f32 / *SAMPLE_RATE as f32;
+        let dt = 1.0 / *SAMPLE_RATE as f32;
 
-        (self.function)(t)
+        self.wave_function.next_value_with_phase(&mut self.phase, dt)
     }
 
     fn next_grain(&mut self) -> Grain {
@@ -50,10 +52,11 @@ impl Sound for Oscillator {
 
     fn clone_box(&self) -> Box<dyn Sound> {
         Box::new(Self {
-            function: Arc::clone(&self.function),
+            wave_function: self.wave_function.clone(),
             index: self.index,
             beat_length: self.beat_length,
             effects: self.effects.iter().map(|e| e.clone_box()).collect(),
+            phase: self.phase,
         })
     }
 
@@ -63,7 +66,7 @@ impl Sound for Oscillator {
 }
 
 pub struct OscillatorBuilder {
-    pub function: Option<Arc<dyn Fn(f32) -> f32 + Send + Sync>>,
+    pub wave_function: Option<WaveFunction>,
     pub beat_length: Option<f32>,
     pub effects: Vec<Box<dyn Effect>>,
 }
@@ -71,14 +74,14 @@ pub struct OscillatorBuilder {
 impl OscillatorBuilder {
     pub fn new() -> Self {
         Self {
-            function: None,
+            wave_function: None,
             beat_length: None,
             effects: Vec::new(),
         }
     }
 
-    pub fn function(mut self, function: impl Fn(f32) -> f32 + Send + Sync + 'static) -> Self {
-        self.function = Some(Arc::new(function));
+    pub fn wave_function(mut self, wave_function: WaveFunction) -> Self {
+        self.wave_function = Some(wave_function);
         self
     }
 
@@ -94,88 +97,128 @@ impl OscillatorBuilder {
 
     pub fn build(self) -> Oscillator {
         Oscillator {
-            function: self.function.unwrap(),
+            wave_function: Box::new(self.wave_function.unwrap()),
             index: 0,
             beat_length: self.beat_length.unwrap(),
             effects: self.effects,
+            phase: 0.0,
         }
     }
 }
 
-pub mod waves {
-    use std::f32::consts::PI;
+#[derive(Clone)]
+pub enum WaveFunction {
+    Sine {
+        frequency: Number,
+        amplitude: Number,
+        phase: Number,
+    },
+}
 
-    pub fn sine(frequency: f32) -> impl Fn(f32) -> f32 + Send + Sync {
-        move |t: f32| (2.0 * PI * frequency * t).sin()
+impl WaveFunction {
+    pub fn next_value(&mut self, t: f32) -> f32 {
+        match self {
+            WaveFunction::Sine { frequency, amplitude, phase } => {
+                let frequency = frequency.next_value();
+                let amplitude = amplitude.next_value();
+                let phase = phase.next_value();
+
+                amplitude * (2.0 * PI * frequency * t + phase).sin()
+            }
+        }
+    }
+
+    pub fn next_value_with_phase(&mut self, accumulated_phase: &mut f32, dt: f32) -> f32 {
+        match self {
+            WaveFunction::Sine { frequency, amplitude, phase } => {
+                let freq = frequency.next_value();
+                let amp = amplitude.next_value();
+                let phase_offset = phase.next_value();
+
+                *accumulated_phase += 2.0 * PI * freq * dt;
+                *accumulated_phase = *accumulated_phase % (2.0 * PI);
+                
+                amp * (*accumulated_phase + phase_offset).sin()
+            }
+        }
     }
 }
 
 pub enum Number {
-    Number(f32),
-    Oscillator(Oscillator),
+    Number {
+        value: f32,
+        plus: f32,
+        mul: f32,
+    },
+    Oscillator {
+        oscillator: Oscillator,
+        plus: f32,
+        mul: f32,
+    },
 }
 
 impl Clone for Number {
     fn clone(&self) -> Self {
         match self {
-            Number::Number(n) => Number::Number(*n),
-            Number::Oscillator(osc) => Number::Oscillator(osc.clone()),
+            Number::Number { value, plus, mul } => Number::Number {
+                value: value.clone(),
+                plus: *plus,
+                mul: *mul,
+            },
+            Number::Oscillator { oscillator, plus, mul } => Number::Oscillator {
+                oscillator: oscillator.clone(),
+                plus: *plus,
+                mul: *mul,
+            },
         }
     }
 }
 
 impl Number {
+    pub fn number(value: f32) -> Self {
+        Number::Number { value, plus: 0.0, mul: 1.0 }
+    }
+
+    pub fn oscillator(oscillator: Oscillator) -> Self {
+        Number::Oscillator { oscillator, plus: 0.0, mul: 1.0 }
+    }
+
     pub fn next_value(&mut self) -> f32 {
         match self {
-            Number::Number(number) => *number,
-            Number::Oscillator(oscillator) => oscillator.next_sample(),
-        }
-    }
-
-    pub fn plus(self, rhs: f32) -> Self {
-        match self {
-            Number::Number(number) => Number::Number(number + rhs),
-            Number::Oscillator(oscillator) => {
-                let function = move |t: f32| (oscillator.function)(t) + rhs;
-
-                Number::Oscillator(Oscillator {
-                    function: Arc::new(function),
-                    index: oscillator.index,
-                    beat_length: oscillator.beat_length,
-                    effects: oscillator.effects,
-                })
+            Number::Number { value, plus, mul } => *mul * *value + *plus,
+            Number::Oscillator { oscillator, plus, mul } => {
+                let value = oscillator.next_sample();
+                *mul * value + *plus
             },
         }
     }
 
-    pub fn mul(self, rhs: f32) -> Self {
+    pub fn plus_f32(self, rhs: f32) -> Self {
         match self {
-            Number::Number(number) => Number::Number(number * rhs),
-            Number::Oscillator(oscillator) => {
-                let function = move |t: f32| (oscillator.function)(t) * rhs;
-
-                Number::Oscillator(Oscillator {
-                    function: Arc::new(function),
-                    index: oscillator.index,
-                    beat_length: oscillator.beat_length,
-                    effects: oscillator.effects,
-                })
+            Number::Number { value, plus, mul } => Number::Number {
+                value: value.clone(),
+                plus: plus + rhs,
+                mul: mul.clone(),
+            },
+            Number::Oscillator { oscillator, plus, mul } => Number::Oscillator {
+                oscillator: oscillator.clone(),
+                plus: plus + rhs,
+                mul: mul.clone(),
             },
         }
     }
 
-    pub fn clamp(self, min: f32, max: f32) -> Self {
+    pub fn mul_f32(self, rhs: f32) -> Self {
         match self {
-            Number::Number(number) => Number::Number(number.clamp(min, max)),
-            Number::Oscillator(oscillator) => {
-                let function = move |t: f32| (oscillator.function)(t).clamp(min, max);
-
-                Number::Oscillator(Oscillator {
-                    function: Arc::new(function),
-                    index: oscillator.index,
-                    beat_length: oscillator.beat_length,
-                    effects: oscillator.effects,
-                })
+            Number::Number { value, plus, mul } => Number::Number {
+                value: value.clone(),
+                plus: plus,
+                mul: mul * rhs,
+            },
+            Number::Oscillator { oscillator, plus, mul } => Number::Oscillator {
+                oscillator: oscillator.clone(),
+                plus: plus,
+                mul: mul * rhs,
             },
         }
     }
