@@ -1,5 +1,4 @@
 use std::f32::consts::PI;
-
 use crate::{oscillators::Number, player::SAMPLE_RATE, sounds::{EffectInput, Grain, SAMPLES_PER_GRAIN}};
 
 pub trait Effect: Send + Sync {
@@ -254,6 +253,68 @@ impl Effect for Filter {
 
         for i in 0..SAMPLES_PER_GRAIN {
             new_grain[i] = self.process_sample(input.grain[i]);
+        }
+
+        new_grain
+    }
+}
+
+/// Applies a soft saturation to the grain.
+#[derive(Clone)]
+pub struct Saturation {
+    target_drive: Number,
+    actual_drive: f32,
+    mix: Number,
+    slew_rate: f32,
+}
+
+impl Saturation {
+    pub fn new(drive: Number, mix: Number, slew_rate: f32) -> Self {
+        let mut target_drive = drive.clone();
+
+        Self {
+            target_drive: target_drive.clone(),
+            actual_drive: target_drive.next_value() / 2.0,
+            mix,
+            slew_rate,
+        }
+    }
+
+    pub fn update_actual_drive(&mut self) {
+        let target_drive = self.target_drive.next_value();
+        let max_change = self.slew_rate / *SAMPLE_RATE as f32;
+        let diff = target_drive - self.actual_drive;
+        let change = diff.clamp(-max_change, max_change);
+        self.actual_drive += change;
+    }
+}
+
+impl Effect for Saturation {
+    fn clone_box(&self) -> Box<dyn Effect> {
+        Box::new(self.clone())
+    }
+
+    fn apply(&mut self, input: EffectInput) -> Grain {
+        let mut new_grain = [0.0; SAMPLES_PER_GRAIN];
+
+        for i in 0..SAMPLES_PER_GRAIN {
+            let sample = input.grain[i];
+
+            self.update_actual_drive();
+            let drive = if sample >= 0.0 {
+                self.actual_drive
+            } else {
+                self.actual_drive * 0.9
+            };
+
+            let scaled = sample * drive;
+            let fd = scaled.tanh();
+            let gain = 2.0 / (1.0 + drive).sqrt();
+            let wet = fd * gain;
+
+            let mix = self.mix.next_value();
+            let new_sample = mix * wet + (1.0 - mix) * sample;
+            new_grain[i] = new_sample;
         }
 
         new_grain

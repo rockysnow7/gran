@@ -308,6 +308,20 @@ impl Number {
         Number::oscillator(oscillator).plus_f32(middle)
     }
 
+    /// Create a square wave that oscillates around a middle value with a given frequency.
+    pub fn square_around(middle: f32, plus_or_minus: f32, frequency: f32) -> Self {
+        let oscillator = OscillatorBuilder::new()
+            .wave_function(WaveFunction::Square {
+                frequency: Number::number(frequency),
+                amplitude: Number::number(plus_or_minus),
+                phase: Number::number(0.0),
+            })
+            .beat_length(0.0)
+            .build();
+
+        Number::oscillator(oscillator).plus_f32(middle)
+    }
+
     pub fn next_value(&mut self) -> f32 {
         match self {
             Number::Number { value, plus, mul } => *mul * *value + *plus,
