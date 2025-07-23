@@ -145,9 +145,23 @@ pub enum WaveFunction {
         amplitude: Number,
         phase: Number,
     },
+    WhiteNoise {
+        amplitude: Number,
+    },
+    PinkNoise {
+        amplitude: Number,
+        generators: Vec<f32>,
+        call_count: usize,
+    },
 }
 
 impl WaveFunction {
+    pub fn pink_noise(amplitude: Number, num_generators: usize) -> Self {
+        let generators = vec![0.0; num_generators];
+
+        Self::PinkNoise { amplitude, generators, call_count: 0 }
+    }
+
     pub fn next_value(&mut self, accumulated_phase: &mut f32, dt: f32) -> f32 {
         match self {
             WaveFunction::Sine { frequency, amplitude, phase } => {
@@ -208,6 +222,34 @@ impl WaveFunction {
                 let sawtooth = 2.0 * normalized_phase - 1.0;
 
                 amp * sawtooth
+            },
+            WaveFunction::WhiteNoise { amplitude } => {
+                let amp = amplitude.next_value();
+                let noise = rand::random_range(-1.0..=1.0);
+
+                amp * noise
+            },
+            WaveFunction::PinkNoise { amplitude, generators, call_count } => {
+                // voss-mccartney
+                let amp = amplitude.next_value();
+
+                if *call_count >= 2usize.pow(generators.len() as u32) {
+                    *call_count = 0;
+                }
+
+                // update the generators
+                for i in 0..generators.len() {
+                    if *call_count % 2usize.pow(i as u32) == 0 {
+                        generators[i] = rand::random_range(-1.0..=1.0);
+                    }
+                }
+
+                let scale_factor = 1.0 / 3.0f32.sqrt();
+                let noise = generators.iter().sum::<f32>() * scale_factor;
+
+                *call_count += 1;
+
+                amp * noise
             },
         }
     }
