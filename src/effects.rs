@@ -377,6 +377,7 @@ impl Effect for Saturation {
 pub struct TapeDelay {
     buffer: VecDeque<f32>,
     read_delay: f32, // in seconds
+    read_offset: usize,
     mix: Number,
     feedback: Number,
 }
@@ -384,7 +385,7 @@ pub struct TapeDelay {
 impl Clone for TapeDelay {
     fn clone(&self) -> Self {
         let read_offset = (self.read_delay * *SAMPLE_RATE as f32) as usize;
-        let mut new_buffer = VecDeque::with_capacity(read_offset);
+        let mut new_buffer = VecDeque::with_capacity(read_offset + 100);
 
         for sample in &self.buffer {
             new_buffer.push_back(*sample);
@@ -393,6 +394,7 @@ impl Clone for TapeDelay {
         Self {
             buffer: new_buffer,
             read_delay: self.read_delay,
+            read_offset: self.read_offset,
             mix: self.mix.clone(),
             feedback: self.feedback.clone(),
         }
@@ -402,18 +404,19 @@ impl Clone for TapeDelay {
 impl TapeDelay {
     pub fn new(read_delay: f32, mix: Number, feedback: Number) -> Self {
         let read_offset = (read_delay * *SAMPLE_RATE as f32) as usize;
-        let buffer = VecDeque::with_capacity(read_offset);
+        let buffer = VecDeque::with_capacity(read_offset + 100);
 
         Self {
             buffer,
             read_delay,
+            read_offset,
             mix,
             feedback,
         }
     }
 
     fn push_sample_to_buffer(&mut self, sample: f32) {
-        if self.buffer.len() == self.buffer.capacity() {
+        if self.buffer.len() == self.read_offset {
             self.buffer.pop_back();
         }
 
@@ -428,7 +431,7 @@ impl TapeDelay {
             *self.buffer.back().unwrap()
         };
 
-        let mix = self.feedback.next_value();
+        let mix = self.mix.next_value();
         assert!(mix >= 0.0 && mix <= 1.0);
         let mixed = mix * delay_sample + (1.0 - mix) * sample;
 
