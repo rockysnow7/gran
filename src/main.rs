@@ -17,36 +17,28 @@ async fn main() {
         })
         .beat_length(1.0)
         .effect(Box::new(ADSR::new(
-            0.2,  // attack
-            0.1,  // decay
-            0.6,  // sustain level
-            0.05, // sustain duration
+            0.3,  // attack
+            0.2,  // decay
+            0.8,  // sustain level
+            0.1, // sustain duration
         )))
         .effect(Box::new(Filter::low_pass(
             // dynamic filter for movement
-            Number::sine_around(300.0, 200.0, 2.0), // slow sweep
+            Number::sine_around(300.0, 150.0, 1.0),
             Number::number(0.6), // resonance
         )))
         .effect(Box::new(Pattern(vec![
-            PatternBeat::Play { frequency: Some(Number::number(note("A2"))), volume: None },
-            PatternBeat::Play { frequency: Some(Number::number(note("A3"))), volume: None },
-            PatternBeat::Play { frequency: Some(Number::number(note("C4"))), volume: None },
-            PatternBeat::Play { frequency: Some(Number::number(note("G3"))), volume: None },
-        ]).humanize(0.5)))
+            PatternBeat::Play { frequency: Some(Number::number(note("G4"))), volume: None },
+            PatternBeat::Play { frequency: Some(Number::number(note("A#4"))), volume: None },
+            PatternBeat::Play { frequency: Some(Number::number(note("F4"))), volume: None },
+            PatternBeat::Play { frequency: Some(Number::number(note("A#4"))), volume: None },
+        ])))
         .effect(Box::new(Saturation::new(
-            Number::number(5.0),
-            Number::number(0.5),
-            0.6,
+            Number::number(4.0),
+            Number::number(0.7),
+            0.4,
         )))
-        .effect(Box::new(TapeDelay::new(
-            0.3,
-            Number::number(0.2),
-            Number::number(0.1),
-            0.001,
-            0.1,
-            0.0005,
-            1.0,
-        )))
+        .effect(Box::new(TapeDelay::light(0.5)))
         .build();
 
     // some background noise

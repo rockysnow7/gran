@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, f32::consts::PI};
+use std::f32::consts::PI;
 use crate::{oscillators::Number, player::SAMPLE_RATE, sounds::{EffectInput, Grain, SAMPLES_PER_GRAIN}};
 
 #[derive(Debug)]
@@ -126,7 +126,7 @@ impl Pattern {
 }
 
 /// Applies an attack-decay-sustain-release envelope to the grain.
-/// As sounds have a fixed duration, the `sustain_duration` is the fixed duration of the sound.
+/// As sounds have a fixed duration, the `sustain_duration` is the duration of the sustain phase.
 /// The remaining duration is used for the release.
 /// All durations are in seconds.
 #[derive(Clone)]
@@ -336,6 +336,26 @@ impl Saturation {
         let change = diff.clamp(-max_change, max_change);
         self.actual_drive += change;
     }
+
+    pub fn process_sample(&mut self, sample: f32) -> f32 {
+        self.update_actual_drive();
+
+        let drive = if sample >= 0.0 {
+            self.actual_drive
+        } else {
+            self.actual_drive * 0.9
+        };
+
+        let scaled = sample * drive;
+        let fd = scaled.tanh();
+        let gain = 2.0 / (1.0 + drive).sqrt();
+        let wet = fd * gain;
+
+        let mix = self.mix.next_value();
+        let new_sample = mix * wet + (1.0 - mix) * sample;
+
+        new_sample
+    }
 }
 
 impl Effect for Saturation {
@@ -348,22 +368,7 @@ impl Effect for Saturation {
 
         for i in 0..SAMPLES_PER_GRAIN {
             let sample = input.grain[i];
-
-            self.update_actual_drive();
-            let drive = if sample >= 0.0 {
-                self.actual_drive
-            } else {
-                self.actual_drive * 0.9
-            };
-
-            let scaled = sample * drive;
-            let fd = scaled.tanh();
-            let gain = 2.0 / (1.0 + drive).sqrt();
-            let wet = fd * gain;
-
-            let mix = self.mix.next_value();
-            let new_sample = mix * wet + (1.0 - mix) * sample;
-            new_grain[i] = new_sample;
+            new_grain[i] = self.process_sample(sample);
         }
 
         EffectOutput {
@@ -382,6 +387,8 @@ pub struct TapeDelay {
     feedback: Number,
     wow_oscillator: Number,
     flutter_oscillator: Number,
+    low_pass_filter: Filter,
+    saturation: Saturation,
 }
 
 impl Clone for TapeDelay {
@@ -401,11 +408,25 @@ impl Clone for TapeDelay {
             feedback: self.feedback.clone(),
             wow_oscillator: self.wow_oscillator.clone(),
             flutter_oscillator: self.flutter_oscillator.clone(),
+            low_pass_filter: self.low_pass_filter.clone(),
+            saturation: self.saturation.clone(),
         }
     }
 }
 
 impl TapeDelay {
+    pub fn light(delay: f32) -> Self {
+        Self::new(
+            delay,
+            Number::number(0.1),
+            Number::number(0.1),
+            0.001,
+            0.1,
+            0.005,
+            1.0,
+        )
+    }
+
     pub fn new(
         read_delay: f32,
         mix: Number,
@@ -429,6 +450,8 @@ impl TapeDelay {
             feedback,
             wow_oscillator: Number::sine_around(0.0, wow_range, wow_speed),
             flutter_oscillator: Number::sine_around(0.0, flutter_range, flutter_speed),
+            low_pass_filter: Filter::low_pass(Number::number(6000.0), Number::number(0.3)),
+            saturation: Saturation::new(Number::number(2.0), Number::number(0.7), 0.5),
         }
     }
 
@@ -460,14 +483,30 @@ impl TapeDelay {
             self.read_sample_from_buffer()
         };
 
-        let mix = self.mix.next_value();
-        assert!(mix >= 0.0 && mix <= 1.0);
-        let mixed = mix * delay_sample + (1.0 - mix) * sample;
+        // let mix = self.mix.next_value();
+        // assert!(mix >= 0.0 && mix <= 1.0);
+        // let mixed = mix * delay_sample + (1.0 - mix) * sample;
+
+        // let feedback = self.feedback.next_value();
+        // assert!(feedback >= 0.0 && feedback <= 1.0);
+        // let processed = sample + feedback * delay_sample;
+        // let processed = self.low_pass_filter.process_sample(processed);
+
+        // self.push_sample_to_buffer(processed);
+
+        // mixed
+
+        let processed = self.saturation.process_sample(delay_sample);
+        let processed = self.low_pass_filter.process_sample(processed);
 
         let feedback = self.feedback.next_value();
         assert!(feedback >= 0.0 && feedback <= 1.0);
-        let processed = sample + feedback * delay_sample;
-        self.push_sample_to_buffer(processed);
+        let to_buffer = sample + feedback * processed;
+        self.push_sample_to_buffer(to_buffer);
+
+        let mix = self.mix.next_value();
+        assert!(mix >= 0.0 && mix <= 1.0);
+        let mixed = mix * processed + (1.0 - mix) * sample;
 
         mixed
     }
