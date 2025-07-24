@@ -1,7 +1,7 @@
 #![warn(clippy::all, clippy::pedantic, unused_crate_dependencies)]
 
 use gran::{
-    effects::{Filter, Pattern, PatternBeat, Saturation, ADSR}, 
+    effects::{Filter, Pattern, PatternBeat, Saturation, TapeDelay, ADSR}, 
     oscillators::{note, Number, OscillatorBuilder, WaveFunction}, 
     play_sound, 
     sounds::CompositionBuilder, 
@@ -11,13 +11,13 @@ use gran::{
 async fn main() {
     let bass = OscillatorBuilder::new()
         .wave_function(WaveFunction::Sawtooth {
-            frequency: Number::number(note("A1")),
+            frequency: Number::number(note("C3")),
             amplitude: Number::number(0.7),
             phase: Number::number(0.0),
         })
         .beat_length(1.0)
         .effect(Box::new(ADSR::new(
-            0.1,  // fast attack
+            0.2,  // fast attack
             0.1,   // quick decay
             0.6,   // sustain level
             0.05,  // sustain duration
@@ -25,21 +25,20 @@ async fn main() {
         .effect(Box::new(Filter::low_pass(
             // dynamic filter for movement
             Number::sine_around(300.0, 200.0, 2.0), // slow sweep
-            // Number::number(300.0),
-            Number::number(0.7), // resonance
-            // Number::sine_around(0.6, 0.3, 2.0),
+            Number::number(0.6), // resonance
         )))
         .effect(Box::new(Pattern(vec![
             PatternBeat::Play { frequency: Some(Number::number(note("A1"))), volume: None },
             PatternBeat::Play { frequency: Some(Number::number(note("A2"))), volume: None },
             PatternBeat::Play { frequency: Some(Number::number(note("C3"))), volume: None },
             PatternBeat::Play { frequency: Some(Number::number(note("G2"))), volume: None },
-        ]).humanize(0.3)))
+        ]).humanize(0.5)))
         .effect(Box::new(Saturation::new(
-            Number::number(6.0),
+            Number::number(8.0),
             Number::number(1.0),
             0.6,
         )))
+        .effect(Box::new(TapeDelay::new(0.5, Number::number(0.2), Number::number(0.1))))
         .build();
 
     // some background noise

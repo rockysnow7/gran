@@ -1,4 +1,4 @@
-use std::f32::consts::PI;
+use std::{collections::VecDeque, f32::consts::PI};
 use crate::{oscillators::Number, player::SAMPLE_RATE, sounds::{EffectInput, Grain, SAMPLES_PER_GRAIN}};
 
 #[derive(Debug)]
@@ -53,7 +53,7 @@ pub enum PatternBeat {
     Skip,
 }
 
-/// Sequences a sound into a pattern of beats at given volumes.
+/// Sequences a sound into a pattern of beats at given volumes and frequencies.
 #[derive(Clone)]
 pub struct Pattern(pub Vec<PatternBeat>);
 
@@ -125,6 +125,10 @@ impl Pattern {
     }
 }
 
+/// Applies an attack-decay-sustain-release envelope to the grain.
+/// As sounds have a fixed duration, the `sustain_duration` is the fixed duration of the sound.
+/// The remaining duration is used for the release.
+/// All durations are in seconds.
 #[derive(Clone)]
 pub struct ADSR {
     pub attack_duration: f32,
@@ -197,6 +201,7 @@ impl Effect for ADSR {
     }
 }
 
+/// A low-pass or high-pass filter.
 #[derive(Clone)]
 pub enum Filter {
     LowPass {
@@ -359,6 +364,93 @@ impl Effect for Saturation {
             let mix = self.mix.next_value();
             let new_sample = mix * wet + (1.0 - mix) * sample;
             new_grain[i] = new_sample;
+        }
+
+        EffectOutput {
+            grain: new_grain,
+            oscillator_changes: Vec::new(),
+        }
+    }
+}
+
+/// A tape delay effect for slapback, echo, etc.
+pub struct TapeDelay {
+    buffer: VecDeque<f32>,
+    read_delay: f32, // in seconds
+    mix: Number,
+    feedback: Number,
+}
+
+impl Clone for TapeDelay {
+    fn clone(&self) -> Self {
+        let read_offset = (self.read_delay * *SAMPLE_RATE as f32) as usize;
+        let mut new_buffer = VecDeque::with_capacity(read_offset);
+
+        for sample in &self.buffer {
+            new_buffer.push_back(*sample);
+        }
+
+        Self {
+            buffer: new_buffer,
+            read_delay: self.read_delay,
+            mix: self.mix.clone(),
+            feedback: self.feedback.clone(),
+        }
+    }
+}
+
+impl TapeDelay {
+    pub fn new(read_delay: f32, mix: Number, feedback: Number) -> Self {
+        let read_offset = (read_delay * *SAMPLE_RATE as f32) as usize;
+        let buffer = VecDeque::with_capacity(read_offset);
+
+        Self {
+            buffer,
+            read_delay,
+            mix,
+            feedback,
+        }
+    }
+
+    fn push_sample_to_buffer(&mut self, sample: f32) {
+        if self.buffer.len() == self.buffer.capacity() {
+            self.buffer.pop_back();
+        }
+
+        self.buffer.push_front(sample);
+    }
+
+    fn process_sample(&mut self, sample: f32) -> f32 {
+        let buffer_duration = self.buffer.len() as f32 / *SAMPLE_RATE as f32;
+        let delay_sample = if buffer_duration < self.read_delay {
+            0.0
+        } else {
+            *self.buffer.back().unwrap()
+        };
+
+        let mix = self.feedback.next_value();
+        assert!(mix >= 0.0 && mix <= 1.0);
+        let mixed = mix * delay_sample + (1.0 - mix) * sample;
+
+        let feedback = self.feedback.next_value();
+        assert!(feedback >= 0.0 && feedback <= 1.0);
+        let processed = sample + feedback * delay_sample;
+        self.push_sample_to_buffer(processed);
+
+        mixed
+    }
+}
+
+impl Effect for TapeDelay {
+    fn clone_box(&self) -> Box<dyn Effect> {
+        Box::new(self.clone())
+    }
+
+    fn apply(&mut self, input: EffectInput) -> EffectOutput {
+        let mut new_grain = [0.0; SAMPLES_PER_GRAIN];
+
+        for i in 0..SAMPLES_PER_GRAIN {
+            new_grain[i] = self.process_sample(input.grain[i]);
         }
 
         EffectOutput {
