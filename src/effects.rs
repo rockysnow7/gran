@@ -375,52 +375,81 @@ impl Effect for Saturation {
 
 /// A tape delay effect for slapback, echo, etc.
 pub struct TapeDelay {
-    buffer: VecDeque<f32>,
+    buffer: Vec<f32>,
     read_delay: f32, // in seconds
-    read_offset: usize,
+    extra_space: usize,
     mix: Number,
     feedback: Number,
+    wow_oscillator: Number,
+    flutter_oscillator: Number,
 }
 
 impl Clone for TapeDelay {
     fn clone(&self) -> Self {
         let read_offset = (self.read_delay * *SAMPLE_RATE as f32) as usize;
-        let mut new_buffer = VecDeque::with_capacity(read_offset + 100);
+        let mut new_buffer = Vec::with_capacity(read_offset + self.extra_space);
 
         for sample in &self.buffer {
-            new_buffer.push_back(*sample);
+            new_buffer.insert(0, *sample);
         }
 
         Self {
             buffer: new_buffer,
             read_delay: self.read_delay,
-            read_offset: self.read_offset,
+            extra_space: self.extra_space,
             mix: self.mix.clone(),
             feedback: self.feedback.clone(),
+            wow_oscillator: self.wow_oscillator.clone(),
+            flutter_oscillator: self.flutter_oscillator.clone(),
         }
     }
 }
 
 impl TapeDelay {
-    pub fn new(read_delay: f32, mix: Number, feedback: Number) -> Self {
+    pub fn new(
+        read_delay: f32,
+        mix: Number,
+        feedback: Number,
+        wow_range_pct: f32,
+        wow_speed: f32,
+        flutter_range_pct: f32,
+        flutter_speed: f32,
+    ) -> Self {
+        let wow_range = wow_range_pct * read_delay;
+        let flutter_range = flutter_range_pct * read_delay;
+        let extra_space = ((wow_range + flutter_range) * *SAMPLE_RATE as f32) as usize; // to allow for wow and flutter
         let read_offset = (read_delay * *SAMPLE_RATE as f32) as usize;
-        let buffer = VecDeque::with_capacity(read_offset + 100);
+        let buffer = Vec::with_capacity(read_offset + extra_space);
 
         Self {
             buffer,
             read_delay,
-            read_offset,
+            extra_space,
             mix,
             feedback,
+            wow_oscillator: Number::sine_around(0.0, wow_range, wow_speed),
+            flutter_oscillator: Number::sine_around(0.0, flutter_range, flutter_speed),
         }
     }
 
     fn push_sample_to_buffer(&mut self, sample: f32) {
-        if self.buffer.len() == self.read_offset {
-            self.buffer.pop_back();
+        if self.buffer.len() >= self.buffer.capacity() - self.extra_space {
+            self.buffer.remove(0);
         }
 
-        self.buffer.push_front(sample);
+        self.buffer.push(sample);
+    }
+
+    fn read_sample_from_buffer(&mut self) -> f32 {
+        let read_index = self.extra_space;
+        let wow = self.wow_oscillator.next_value();
+        let flutter = self.flutter_oscillator.next_value();
+        // convert wow and flutter from seconds to samples
+        let wow_samples = wow * *SAMPLE_RATE as f32;
+        let flutter_samples = flutter * *SAMPLE_RATE as f32;
+        let read_index = (read_index as f32 + wow_samples + flutter_samples) as usize;
+
+        self.buffer[read_index]
     }
 
     fn process_sample(&mut self, sample: f32) -> f32 {
@@ -428,7 +457,7 @@ impl TapeDelay {
         let delay_sample = if buffer_duration < self.read_delay {
             0.0
         } else {
-            *self.buffer.back().unwrap()
+            self.read_sample_from_buffer()
         };
 
         let mix = self.mix.next_value();
