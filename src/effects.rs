@@ -131,10 +131,10 @@ impl Pattern {
 /// All durations are in seconds.
 #[derive(Clone)]
 pub struct ADSR {
-    pub attack_duration: f32,
-    pub decay_duration: f32,
+    pub attack_duration: f32, // in seconds
+    pub decay_duration: f32, // in seconds
     pub sustain_amplitude_multiplier: f32,
-    pub sustain_duration: f32,
+    pub sustain_duration: f32, // in seconds
 }
 
 impl ADSR {
@@ -159,7 +159,7 @@ impl Effect for ADSR {
     }
 
     fn apply(&mut self, input: EffectInput) -> EffectOutput {
-        assert!(self.attack_duration + self.decay_duration + self.sustain_duration < input.secs_per_beat);
+        assert!(self.attack_duration + self.decay_duration + self.sustain_duration <= input.secs_per_beat);
 
         let sustain_start = self.attack_duration + self.decay_duration;
         let release_start = sustain_start + self.sustain_duration;
@@ -483,19 +483,6 @@ impl TapeDelay {
             self.read_sample_from_buffer()
         };
 
-        // let mix = self.mix.next_value();
-        // assert!(mix >= 0.0 && mix <= 1.0);
-        // let mixed = mix * delay_sample + (1.0 - mix) * sample;
-
-        // let feedback = self.feedback.next_value();
-        // assert!(feedback >= 0.0 && feedback <= 1.0);
-        // let processed = sample + feedback * delay_sample;
-        // let processed = self.low_pass_filter.process_sample(processed);
-
-        // self.push_sample_to_buffer(processed);
-
-        // mixed
-
         let processed = self.saturation.process_sample(delay_sample);
         let processed = self.low_pass_filter.process_sample(processed);
 
@@ -527,6 +514,50 @@ impl Effect for TapeDelay {
         EffectOutput {
             grain: new_grain,
             oscillator_changes: Vec::new(),
+        }
+    }
+}
+
+/// Offsets the time of the grain to only play before or after a certain beat number.
+#[derive(Clone)]
+pub enum TimeOffset {
+    WaitUntil(usize),
+    StopAfter(usize),
+}
+
+impl Effect for TimeOffset {
+    fn clone_box(&self) -> Box<dyn Effect> {
+        Box::new(self.clone())
+    }
+
+    fn apply(&mut self, input: EffectInput) -> EffectOutput {
+        match self {
+            Self::WaitUntil(start_beat) => {
+                if input.beat_number < *start_beat {
+                    EffectOutput {
+                        grain: [0.0; SAMPLES_PER_GRAIN],
+                        oscillator_changes: Vec::new(),
+                    }
+                } else {
+                    EffectOutput {
+                        grain: input.grain,
+                        oscillator_changes: Vec::new(),
+                    }
+                }
+            },
+            Self::StopAfter(stop_beat) => {
+                if input.beat_number > *stop_beat {
+                    EffectOutput {
+                        grain: [0.0; SAMPLES_PER_GRAIN],
+                        oscillator_changes: Vec::new(),
+                    }
+                } else {
+                    EffectOutput {
+                        grain: input.grain,
+                        oscillator_changes: Vec::new(),
+                    }
+                }
+            }
         }
     }
 }

@@ -85,7 +85,7 @@ impl Sound for Oscillator {
         let mut oscillator_changes = Vec::new();
         for effect in &mut self.effects {
             let samples_per_beat = *SAMPLE_RATE as f32 * self.beat_length;
-            let time_since_start_of_beat = self.index as f32 / samples_per_beat;
+            let time_since_start_of_beat = self.index as f32 / *SAMPLE_RATE as f32;
             let input = EffectInput {
                 grain,
                 beat_number: self.beat_number,
