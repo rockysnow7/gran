@@ -1,9 +1,19 @@
 use std::f32::consts::PI;
 use crate::{oscillators::Number, player::SAMPLE_RATE, sounds::{EffectInput, Grain, SAMPLES_PER_GRAIN}};
 
+#[derive(Debug)]
+pub enum OscillatorChange {
+    Frequency(f32),
+}
+
+pub struct EffectOutput {
+    pub grain: Grain,
+    pub oscillator_changes: Vec<OscillatorChange>,
+}
+
 pub trait Effect: Send + Sync {
     fn clone_box(&self) -> Box<dyn Effect>;
-    fn apply(&mut self, input: EffectInput) -> Grain;
+    fn apply(&mut self, input: EffectInput) -> EffectOutput;
 }
 
 /// Adjusts the volume of every grain.
@@ -11,13 +21,16 @@ pub trait Effect: Send + Sync {
 pub struct Volume(pub Number);
 
 impl Effect for Volume {
-    fn apply(&mut self, input: EffectInput) -> Grain {
+    fn apply(&mut self, input: EffectInput) -> EffectOutput {
         let mut new_grain = [0.0; SAMPLES_PER_GRAIN];
         for i in 0..SAMPLES_PER_GRAIN {
             new_grain[i] = input.grain[i] * self.0.next_value();
         }
 
-        new_grain
+        EffectOutput {
+            grain: new_grain,
+            oscillator_changes: Vec::new(),
+        }
     }
 
     fn clone_box(&self) -> Box<dyn Effect> {
@@ -28,12 +41,16 @@ impl Effect for Volume {
 /// A beat in a `Pattern`.
 #[derive(Clone)]
 pub enum PatternBeat {
-    /// The grain should be played on this beat. Equivalent to `PlayWithVolume(1.0)`.
-    Play,
-    /// The grain should not be played on this beat. Equivalent to `PlayWithVolume(0.0)`.
+    /// The grain should be played on this beat.
+    /// If `frequency` is `None`, the frequency will be the same as the previous beat.
+    /// If `frequency` is `Some`, the frequency of the oscillator will be set to this value, overriding the existing value.
+    /// If `volume` is `None`, the volume will be the same as the previous beat.
+    Play {
+        frequency: Option<Number>,
+        volume: Option<Number>,
+    },
+    /// The grain should not be played on this beat.
     Skip,
-    /// The grain should be played on this beat, with a volume multiplier.
-    PlayWithVolume(Number),
 }
 
 /// Sequences a sound into a pattern of beats at given volumes.
@@ -45,18 +62,36 @@ impl Effect for Pattern {
         Box::new(self.clone())
     }
 
-    fn apply(&mut self, input: EffectInput) -> Grain {
+    fn apply(&mut self, input: EffectInput) -> EffectOutput {
+        let pattern_len = self.0.len();
+        let beat = &mut self.0[input.beat_number % pattern_len];
+        
         let mut new_grain = [0.0; SAMPLES_PER_GRAIN];
-        for i in 0..SAMPLES_PER_GRAIN {
-            let pattern_len = self.0.len();
-            new_grain[i] = match &mut self.0[input.beat_number % pattern_len] {
-                PatternBeat::Play => input.grain[i],
-                PatternBeat::Skip => 0.0,
-                PatternBeat::PlayWithVolume(volume) => input.grain[i] * volume.next_value(),
-            };
+        let mut oscillator_changes = Vec::new();
+        match beat {
+            PatternBeat::Play { frequency, volume } => {
+                if let Some(frequency) = frequency {
+                    let freq = frequency.next_value();
+                    oscillator_changes.push(OscillatorChange::Frequency(freq));
+                }
+
+                let volume = if let Some(volume) = volume {
+                    volume.next_value()
+                } else {
+                    1.0
+                };
+
+                for i in 0..SAMPLES_PER_GRAIN {
+                    new_grain[i] = input.grain[i] * volume;
+                }
+            },
+            PatternBeat::Skip => {},
         }
 
-        new_grain
+        EffectOutput {
+            grain: new_grain,
+            oscillator_changes,
+        }
     }
 }
 
@@ -66,21 +101,24 @@ impl Pattern {
         let mut new_pattern = self.0;
         for beat in new_pattern.iter_mut() {
             *beat = match beat {
-                PatternBeat::Play => {
-                    let volume = 1.0;
+                PatternBeat::Play { frequency, volume } => {
+                    let mut volume = if let Some(volume) = volume {
+                        volume.next_value()
+                    } else {
+                        1.0
+                    };
+
                     let range = volume * range_multiplier;
                     let random_offset = rand::random_range(-range..=range);
+                    volume += random_offset;
 
-                    PatternBeat::PlayWithVolume(Number::number(volume + random_offset))
+                    PatternBeat::Play {
+                        frequency: frequency.clone(),
+                        volume: Some(Number::number(volume)),
+                    }
                 },
                 PatternBeat::Skip => PatternBeat::Skip,
-                PatternBeat::PlayWithVolume(volume) => {
-                    let range = volume.next_value() * range_multiplier;
-                    let random_offset = rand::random_range(-range..=range);
-
-                    PatternBeat::PlayWithVolume(volume.clone().plus_f32(random_offset))
-                },
-            };
+            }
         }
 
         Self(new_pattern)
@@ -116,7 +154,7 @@ impl Effect for ADSR {
         Box::new(self.clone())
     }
 
-    fn apply(&mut self, input: EffectInput) -> Grain {
+    fn apply(&mut self, input: EffectInput) -> EffectOutput {
         assert!(self.attack_duration + self.decay_duration + self.sustain_duration < input.secs_per_beat);
 
         let sustain_start = self.attack_duration + self.decay_duration;
@@ -152,7 +190,10 @@ impl Effect for ADSR {
             }
         }
 
-        new_grain
+        EffectOutput {
+            grain: new_grain,
+            oscillator_changes: Vec::new(),
+        }
     }
 }
 
@@ -248,14 +289,17 @@ impl Effect for Filter {
         Box::new(self.clone())
     }
 
-    fn apply(&mut self, input: EffectInput) -> Grain {
+    fn apply(&mut self, input: EffectInput) -> EffectOutput {
         let mut new_grain = [0.0; SAMPLES_PER_GRAIN];
 
         for i in 0..SAMPLES_PER_GRAIN {
             new_grain[i] = self.process_sample(input.grain[i]);
         }
 
-        new_grain
+        EffectOutput {
+            grain: new_grain,
+            oscillator_changes: Vec::new(),
+        }
     }
 }
 
@@ -274,7 +318,7 @@ impl Saturation {
 
         Self {
             target_drive: target_drive.clone(),
-            actual_drive: target_drive.next_value() / 2.0,
+            actual_drive: target_drive.next_value() / 3.0,
             mix,
             slew_rate,
         }
@@ -294,7 +338,7 @@ impl Effect for Saturation {
         Box::new(self.clone())
     }
 
-    fn apply(&mut self, input: EffectInput) -> Grain {
+    fn apply(&mut self, input: EffectInput) -> EffectOutput {
         let mut new_grain = [0.0; SAMPLES_PER_GRAIN];
 
         for i in 0..SAMPLES_PER_GRAIN {
@@ -317,6 +361,9 @@ impl Effect for Saturation {
             new_grain[i] = new_sample;
         }
 
-        new_grain
+        EffectOutput {
+            grain: new_grain,
+            oscillator_changes: Vec::new(),
+        }
     }
 }

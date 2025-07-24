@@ -1,5 +1,23 @@
 use std::f32::consts::PI;
-use crate::{effects::Effect, player::SAMPLE_RATE, sounds::{EffectInput, Grain, Sound, SAMPLES_PER_GRAIN}};
+use crate::{effects::{Effect, OscillatorChange}, player::SAMPLE_RATE, sounds::{EffectInput, Grain, Sound, SAMPLES_PER_GRAIN}};
+
+/// Convert a note name to a frequency in Hz.
+/// `note_name` is a string like "A4", "C#3", etc.
+/// The octave must be given. Only sharp notes are supported, not flats.
+pub fn note(note_name: &str) -> f32 {
+    let octave = note_name.chars().last().unwrap().to_digit(10).unwrap() as isize;
+    let note_name = note_name.chars().take(note_name.len() - 1).collect::<String>();
+
+    let notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    let note_index = notes.iter().position(|note| *note == note_name).unwrap() as isize;
+    let diff_from_a_within_octave = note_index - 9;
+    let diff_from_a_octaves = octave - 4;
+    let diff_semitones = diff_from_a_within_octave + diff_from_a_octaves * 12;
+
+    let freq = 440.0 * 2.0f32.powf(diff_semitones as f32 / 12.0);
+
+    freq
+}
 
 pub struct Oscillator {
     wave_function: Box<WaveFunction>,
@@ -9,6 +27,22 @@ pub struct Oscillator {
     beat_number: usize,
     effects: Vec<Box<dyn Effect>>,
     phase: f32,
+}
+
+impl Oscillator {
+    fn apply_change(&mut self, change: OscillatorChange) {
+        match change {
+            OscillatorChange::Frequency(freq) => {
+                match self.wave_function.as_mut() {
+                    WaveFunction::Sine { frequency, .. } => *frequency = Number::number(freq),
+                    WaveFunction::Square { frequency, .. } => *frequency = Number::number(freq),
+                    WaveFunction::Triangle { frequency, .. } => *frequency = Number::number(freq),
+                    WaveFunction::Sawtooth { frequency, .. } => *frequency = Number::number(freq),
+                    WaveFunction::WhiteNoise { .. } | WaveFunction::PinkNoise { .. } => {},
+                }
+            },
+        }
+    }
 }
 
 impl Clone for Oscillator {
@@ -48,6 +82,7 @@ impl Sound for Oscillator {
             *sample = self.next_sample();
         }
 
+        let mut oscillator_changes = Vec::new();
         for effect in &mut self.effects {
             let samples_per_beat = *SAMPLE_RATE as f32 * self.beat_length;
             let time_since_start_of_beat = self.index as f32 / samples_per_beat;
@@ -57,7 +92,16 @@ impl Sound for Oscillator {
                 time_since_start_of_beat,
                 secs_per_beat: self.beat_length,
             };
-            grain = effect.apply(input);
+            let output = effect.apply(input);
+            grain = output.grain;
+
+            for change in output.oscillator_changes {
+                oscillator_changes.push(change);
+            }
+        }
+
+        for change in oscillator_changes {
+            self.apply_change(change);
         }
 
         grain

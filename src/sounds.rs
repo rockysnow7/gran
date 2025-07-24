@@ -164,7 +164,8 @@ impl Sound for Sample {
                 time_since_start_of_beat,
                 secs_per_beat: self.secs_per_beat,
             };
-            grain = effect.apply(input);
+            let output = effect.apply(input);
+            grain = output.grain;
         }
 
         grain
@@ -358,7 +359,8 @@ impl Sound for Composition {
                 time_since_start_of_beat,
                 secs_per_beat: self.secs_per_beat,
             };
-            grain = effect.apply(input);
+            let output = effect.apply(input);
+            grain = output.grain;
         }
 
         grain
