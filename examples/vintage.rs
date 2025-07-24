@@ -25,9 +25,7 @@ async fn main() {
         .effect(Box::new(Filter::low_pass(
             // dynamic filter for movement
             Number::sine_around(300.0, 200.0, 2.0), // slow sweep
-            // Number::number(300.0),
             Number::number(0.7), // resonance
-            // Number::sine_around(0.6, 0.3, 2.0),
         )))
         .effect(Box::new(Pattern(vec![
             PatternBeat::Play { frequency: Some(Number::number(note("A1"))), volume: None },
