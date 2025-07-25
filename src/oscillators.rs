@@ -20,7 +20,7 @@ pub fn note(note_name: &str) -> f32 {
 }
 
 /// An input to an oscillator. Like a simplified form of MIDI.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum OscillatorInput {
     Press(f32), // frequency in Hz
     PressSame, // press the same frequency as the last input
@@ -28,7 +28,7 @@ pub enum OscillatorInput {
 }
 
 /// An input to be sent to an oscillator at a given time.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct OscillatorInputAtTime {
     pub input: OscillatorInput,
     pub time: f32, // in seconds since the start of the oscillator
@@ -49,17 +49,26 @@ impl ADSR {
     }
 }
 
+#[derive(Clone)]
+pub enum OscillatorState {
+    Idle,
+    Play {
+        started_at: f32,
+    },
+    Release {
+        started_at: f32,
+    },
+}
+
 pub struct Oscillator {
     wave_function: Box<WaveFunction>,
     index: usize,
     effects: Vec<Box<dyn Effect>>,
     phase: f32,
-    last_input: Option<OscillatorInput>,
-    index_at_last_input: Option<usize>,
     inputs: Vec<OscillatorInputAtTime>,
+    state: OscillatorState,
     secs_since_start: f32,
-    secs_since_release: Option<f32>,
-    adsr: Option<ADSR>,
+    adsr: ADSR,
 }
 
 impl Oscillator {
@@ -78,19 +87,17 @@ impl Oscillator {
     }
 
     fn handle_input(&mut self, input: OscillatorInput) {
-        self.last_input = Some(input.clone());
-        self.index_at_last_input = Some(self.index);
-
+        // println!("input: {:?} at time {} (buffer: {:?})", input, self.secs_since_start, self.inputs);
         match input {
             OscillatorInput::Press(freq) => {
                 self.apply_change(OscillatorChange::Frequency(freq));
-                self.secs_since_release = None;
+                self.state = OscillatorState::Play { started_at: self.secs_since_start };
             },
             OscillatorInput::Release => {
                 self.index = 0;
-                self.secs_since_release = Some(0.0);
+                self.state = OscillatorState::Release { started_at: self.secs_since_start };
             },
-            OscillatorInput::PressSame => (),
+            OscillatorInput::PressSame => self.state = OscillatorState::Play { started_at: self.secs_since_start },
         }
     }
 
@@ -103,50 +110,45 @@ impl Oscillator {
         }
     }
 
-    /// Apply the attack, decay, or sustain to a grain.
-    fn apply_ads_to_grain(&mut self, grain: &mut [f32]) {
-        let adsr = self.adsr.as_ref().unwrap();
+    // /// Get the next sample of the oscillator without checking the input queue or ADSR state.
+    // fn next_sample_raw(&mut self) -> f32 {
+    //     self.secs_since_start += 1.0 / *SAMPLE_RATE as f32;
+    //     self.index += 1;
 
-        let decay_start = adsr.attack_duration;
-        let sustain_start = decay_start + adsr.decay_duration;
+    //     let dt = 1.0 / *SAMPLE_RATE as f32;
 
-        if self.secs_since_start < decay_start {
-            // attack
-            println!("attack ({})", self.secs_since_start);
-            let attack_progress = self.secs_since_start / adsr.attack_duration;
-            for sample in grain {
-                *sample *= attack_progress;
-            }
-        } else if self.secs_since_start < sustain_start {
-            // decay
-            println!("decay ({})", self.secs_since_start);
-            let decay_progress = (self.secs_since_start - decay_start) / adsr.decay_duration;
-            let sustain_amplitude_multiplier = 1.0 - adsr.sustain_amplitude_multiplier * decay_progress;
-            for sample in grain {
-                *sample *= sustain_amplitude_multiplier;
-            }
-        } else {
-            // sustain
-            println!("sustain ({})", self.secs_since_start);
-            for sample in grain {
-                *sample *= adsr.sustain_amplitude_multiplier;
-            }
-        }
-    }
+    //     self.wave_function.next_value(&mut self.phase, dt)
+    // }
 
-    /// Get the next sample of the release phase of the ADSR.
-    fn next_release_sample(&mut self) -> f32 {
-        let adsr = self.adsr.as_ref().unwrap();
+    // /// Get the next grain of the oscillator without checking the input queue or ADSR state.
+    // fn next_grain_raw(&mut self) -> Grain {
+    //     let mut grain = [0.0; SAMPLES_PER_GRAIN];
+    //     for sample in &mut grain {
+    //         *sample = self.next_sample_raw();
+    //     }
 
-        // println!("secs_since_release: {}", self.secs_since_release.unwrap());
-        let release_progress = self.secs_since_release.unwrap() / adsr.release_duration;
-        // println!("release_progress: {}", release_progress);
-        let release_amplitude_multiplier = adsr.sustain_amplitude_multiplier * (1.0 - release_progress);
-        // println!("release_amplitude_multiplier: {}", release_amplitude_multiplier);
+    //     let mut oscillator_changes = Vec::new();
+    //     for effect in &mut self.effects {
+    //         let time_since_start_of_beat = self.index as f32 / *SAMPLE_RATE as f32;
+    //         let input = EffectInput {
+    //             grain,
+    //             time_since_start_of_beat,
+    //             time_since_release: self.secs_since_release,
+    //         };
+    //         let output = effect.apply(input);
+    //         grain = output.grain;
 
-        let sample = self.wave_function.next_value(&mut self.phase, 1.0 / *SAMPLE_RATE as f32);
-        sample * release_amplitude_multiplier
-    }
+    //         for change in output.oscillator_changes {
+    //             oscillator_changes.push(change);
+    //         }
+    //     }
+
+    //     for change in oscillator_changes {
+    //         self.apply_change(change);
+    //     }
+
+    //     grain
+    // }
 }
 
 impl Clone for Oscillator {
@@ -156,11 +158,9 @@ impl Clone for Oscillator {
             index: self.index,
             effects: self.effects.iter().map(|e| e.clone_box()).collect(),
             phase: self.phase,
-            last_input: self.last_input.clone(),
-            index_at_last_input: self.index_at_last_input.clone(),
             inputs: self.inputs.clone(),
+            state: self.state.clone(),
             secs_since_start: self.secs_since_start,
-            secs_since_release: self.secs_since_release,
             adsr: self.adsr.clone(),
         }
     }
@@ -172,46 +172,33 @@ impl Sound for Oscillator {
     }
 
     fn next_sample(&mut self) -> f32 {
-        self.update_inputs();
         self.secs_since_start += 1.0 / *SAMPLE_RATE as f32;
-        self.secs_since_release = self.secs_since_release.map(|secs| secs + 1.0 / *SAMPLE_RATE as f32);
 
-        let dt = 1.0 / *SAMPLE_RATE as f32;
-
-        if let Some(OscillatorInput::Release) = self.last_input {
-            if let Some(adsr) = &self.adsr {
-                if let Some(secs_since_release) = self.secs_since_release {
-                    if secs_since_release <= adsr.release_duration {
-                        let next_sample = self.next_release_sample();
-                        // println!("release ({})", next_sample);
-
-                        return next_sample;
-                    }
-                }
-            }
-            return 0.0;
-        } else if self.last_input.is_none() {
+        if let OscillatorState::Idle = &self.state {
             return 0.0;
         }
 
         self.index += 1;
+        let dt = 1.0 / *SAMPLE_RATE as f32;
 
         self.wave_function.next_value(&mut self.phase, dt)
     }
 
     fn next_grain(&mut self) -> Grain {
+        self.update_inputs();
+
+        // get grain
         let mut grain = [0.0; SAMPLES_PER_GRAIN];
         for sample in &mut grain {
             *sample = self.next_sample();
         }
 
+        // apply effects
         let mut oscillator_changes = Vec::new();
         for effect in &mut self.effects {
-            let time_since_start_of_beat = self.index as f32 / *SAMPLE_RATE as f32;
             let input = EffectInput {
                 grain,
-                time_since_start_of_beat,
-                time_since_release: self.secs_since_release,
+                time_since_start_of_beat: self.secs_since_start,
             };
             let output = effect.apply(input);
             grain = output.grain;
@@ -221,12 +208,55 @@ impl Sound for Oscillator {
             }
         }
 
-        if self.adsr.is_some() && self.secs_since_release.is_none() {
-            self.apply_ads_to_grain(&mut grain)
-        }
-
         for change in oscillator_changes {
             self.apply_change(change);
+        }
+
+        // apply adsr
+        match &self.state {
+            OscillatorState::Idle => {},
+            OscillatorState::Play { started_at } => {
+                // attack/decay/sustain
+                let secs_since_start_of_play = self.secs_since_start - started_at;
+
+                let decay_start = self.adsr.attack_duration;
+                let sustain_start = decay_start + self.adsr.decay_duration;
+
+                if secs_since_start_of_play < decay_start {
+                    // attack
+                    let attack_progress = secs_since_start_of_play / self.adsr.attack_duration;
+                    for sample in &mut grain {
+                        *sample *= attack_progress;
+                    }
+                } else if secs_since_start_of_play < sustain_start {
+                    // decay
+                    let decay_progress = (secs_since_start_of_play - decay_start) / self.adsr.decay_duration;
+                    let diff = 1.0 - self.adsr.sustain_amplitude_multiplier;
+                    let amplitude = 1.0 - diff * decay_progress;
+                    for sample in &mut grain {
+                        *sample *= amplitude;
+                    }
+                } else {
+                    // sustain
+                    for sample in &mut grain {
+                        *sample *= self.adsr.sustain_amplitude_multiplier;
+                    }
+                }
+            },
+            OscillatorState::Release { started_at } => {
+                // release
+                let secs_since_start_of_release = self.secs_since_start - started_at;
+                if secs_since_start_of_release > self.adsr.release_duration {
+                    self.state = OscillatorState::Idle;
+                    grain = [0.0; SAMPLES_PER_GRAIN];
+                } else {
+                    let release_progress = secs_since_start_of_release / self.adsr.release_duration;
+                    let amplitude = self.adsr.sustain_amplitude_multiplier * (1.0 - release_progress);
+                    for sample in &mut grain {
+                        *sample *= amplitude;
+                    }
+                }
+            },
         }
 
         grain
@@ -240,11 +270,9 @@ impl Sound for Oscillator {
             index: self.index,
             effects: self.effects.iter().map(|e| e.clone_box()).collect(),
             phase: self.phase,
-            last_input: self.last_input.clone(),
-            index_at_last_input: self.index_at_last_input.clone(),
             inputs: self.inputs.clone(),
+            state: self.state.clone(),
             secs_since_start: self.secs_since_start,
-            secs_since_release: self.secs_since_release,
             adsr: self.adsr.clone(),
         })
     }
@@ -304,17 +332,17 @@ impl OscillatorBuilder {
         let mut inputs = self.inputs;
         inputs.sort_by(|a, b| a.time.partial_cmp(&b.time).unwrap());
 
+        let adsr = self.adsr.unwrap_or(ADSR::new(0.0, 0.0, 1.0, 0.0));
+
         Oscillator {
             wave_function: Box::new(self.wave_function.unwrap()),
             index: 0,
             effects: self.effects,
             phase: 0.0,
-            last_input: None,
-            index_at_last_input: None,
             inputs,
+            state: OscillatorState::Idle,
             secs_since_start: 0.0,
-            secs_since_release: None,
-            adsr: self.adsr,
+            adsr,
         }
     }
 }
