@@ -1,7 +1,7 @@
 #![warn(clippy::all, clippy::pedantic, unused_crate_dependencies)]
 
 use gran::{
-    effects::{Filter, Saturation, Volume}, 
+    effects::{Filter, Saturation, TapeDelay, Volume}, 
     oscillators::{note, Number, OscillatorBuilder, OscillatorInput, OscillatorInputAtTime, WaveFunction}, 
     play_sound, sounds::{CompositionBuilder, SampleBuilder, SampleInput, SampleInputAtTime},
 };
@@ -11,31 +11,51 @@ async fn main() {
     let a = osc()
         .inputs(vec![
             OscillatorInputAtTime {
-                input: OscillatorInput::Press(note("B3")),
+                input: OscillatorInput::Press(note("C3")),
                 time: 0.0,
-            },
-            OscillatorInputAtTime {
-                input: OscillatorInput::Release,
-                time: 1.0,
             },
         ])
         .build();
 
-    let kick = SampleBuilder::new()
-        .samples_from_file("samples/kick.wav")
-        .secs_per_beat(0.5)
-        .effect(Box::new(Volume(Number::number(300.0))))
+    let b = osc()
         .inputs(vec![
-            SampleInputAtTime {
-                input: SampleInput::Trigger,
+            OscillatorInputAtTime {
+                input: OscillatorInput::Press(note("E3")),
+                time: 0.02,
+            },
+        ])
+        .build();
+
+    let c = osc()
+        .inputs(vec![
+            OscillatorInputAtTime {
+                input: OscillatorInput::Press(note("G3")),
+                // time: 0.04,
                 time: 0.0,
+            },
+            OscillatorInputAtTime {
+                input: OscillatorInput::Release,
+                time: 0.5,
+            },
+            OscillatorInputAtTime {
+                input: OscillatorInput::Press(note("G#3")),
+                time: 0.6,
+            },
+            OscillatorInputAtTime {
+                input: OscillatorInput::Release,
+                time: 2.6,
+            },
+            OscillatorInputAtTime {
+                input: OscillatorInput::Press(note("G3")),
+                time: 2.7,
             },
         ])
         .build();
 
     let mut composition = CompositionBuilder::new()
         .sound(Box::new(a))
-        .sound(Box::new(kick))
+        .sound(Box::new(b))
+        .sound(Box::new(c))
         .effect(Box::new(Volume(Number::number(0.8))))
         .build();
 
@@ -51,7 +71,7 @@ fn osc() -> OscillatorBuilder {
         })
         .effect(Box::new(Volume(Number::number(0.7))))
         .effect(Box::new(Filter::low_pass(
-            Number::number(300.0),
+            Number::number(400.0),
             Number::number(0.5),
         )))
         .effect(Box::new(Saturation::new(
@@ -59,4 +79,5 @@ fn osc() -> OscillatorBuilder {
             Number::number(0.5),
             0.4,
         )))
+        .effect(Box::new(TapeDelay::light(0.5)))
 }

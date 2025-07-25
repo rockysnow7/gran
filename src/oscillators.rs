@@ -23,6 +23,7 @@ pub fn note(note_name: &str) -> f32 {
 #[derive(Clone)]
 pub enum OscillatorInput {
     Press(f32), // frequency in Hz
+    PressSame, // press the same frequency as the last input
     Release,
 }
 
@@ -66,6 +67,7 @@ impl Oscillator {
         match input {
             OscillatorInput::Press(freq) => self.apply_change(OscillatorChange::Frequency(freq)),
             OscillatorInput::Release => self.index = 0,
+            OscillatorInput::PressSame => (),
         }
     }
 
@@ -100,6 +102,9 @@ impl Sound for Oscillator {
     }
 
     fn next_sample(&mut self) -> f32 {
+        self.update_inputs();
+        self.secs_since_start += 1.0 / *SAMPLE_RATE as f32;
+
         if let Some(OscillatorInput::Release) = self.last_input {
             return 0.0;
         } else if self.last_input.is_none() {
@@ -107,14 +112,13 @@ impl Sound for Oscillator {
         }
 
         self.index += 1;
+ 
         let dt = 1.0 / *SAMPLE_RATE as f32;
 
         self.wave_function.next_value(&mut self.phase, dt)
     }
 
     fn next_grain(&mut self) -> Grain {
-        self.update_inputs();
-
         let mut grain = [0.0; SAMPLES_PER_GRAIN];
         for sample in &mut grain {
             *sample = self.next_sample();
@@ -138,8 +142,6 @@ impl Sound for Oscillator {
         for change in oscillator_changes {
             self.apply_change(change);
         }
-
-        self.secs_since_start += SAMPLES_PER_GRAIN as f32 / *SAMPLE_RATE as f32;
 
         grain
     }
@@ -191,6 +193,14 @@ impl OscillatorBuilder {
 
     pub fn inputs(mut self, inputs: Vec<OscillatorInputAtTime>) -> Self {
         self.inputs.extend(inputs);
+        self
+    }
+
+    pub fn auto_play(mut self) -> Self {
+        self.inputs.push(OscillatorInputAtTime {
+            input: OscillatorInput::PressSame,
+            time: 0.0,
+        });
         self
     }
 
@@ -391,6 +401,7 @@ impl Number {
                 amplitude: Number::number(plus_or_minus),
                 phase: Number::number(0.0),
             })
+            .auto_play()
             .build();
 
         Number::oscillator(oscillator).plus_f32(middle)
@@ -404,6 +415,7 @@ impl Number {
                 amplitude: Number::number(plus_or_minus),
                 phase: Number::number(0.0),
             })
+            .auto_play()
             .build();
 
         Number::oscillator(oscillator).plus_f32(middle)
