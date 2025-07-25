@@ -95,7 +95,8 @@ pub type Grain = [f32; SAMPLES_PER_GRAIN];
 /// The data passed to an effect.
 pub struct EffectInput {
     pub grain: Grain,
-    pub time_since_start_of_beat: f32,
+    pub time_since_start_of_beat: f32, // in seconds
+    pub time_since_release: Option<f32>, // in seconds, for oscillators only
 }
 
 pub trait Sound: Send + Sync {
@@ -200,6 +201,7 @@ impl Sound for Sample {
             let input = EffectInput {
                 grain,
                 time_since_start_of_beat,
+                time_since_release: None,
             };
             let output = effect.apply(input);
             grain = output.grain;
@@ -377,6 +379,7 @@ impl Sound for Composition {
             let input = EffectInput {
                 grain,
                 time_since_start_of_beat: self.secs_since_start,
+                time_since_release: None,
             };
             let output = effect.apply(input);
             grain = output.grain;
