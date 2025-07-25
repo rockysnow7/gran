@@ -19,14 +19,29 @@ pub fn note(note_name: &str) -> f32 {
     freq
 }
 
+/// An input to an oscillator. Like a simplified form of MIDI.
+#[derive(Clone)]
+pub enum OscillatorInput {
+    Press(f32), // frequency in Hz
+    Release,
+}
+
+/// An input to be sent to an oscillator at a given time.
+#[derive(Clone)]
+pub struct OscillatorInputAtTime {
+    pub input: OscillatorInput,
+    pub time: f32, // in seconds since the start of the oscillator
+}
+
 pub struct Oscillator {
     wave_function: Box<WaveFunction>,
     index: usize,
-    /// The length of a beat in seconds.
-    beat_length: f32,
-    beat_number: usize,
     effects: Vec<Box<dyn Effect>>,
     phase: f32,
+    last_input: Option<OscillatorInput>,
+    index_at_last_input: Option<usize>,
+    inputs: Vec<OscillatorInputAtTime>,
+    secs_since_start: f32,
 }
 
 impl Oscillator {
@@ -43,6 +58,25 @@ impl Oscillator {
             },
         }
     }
+
+    fn handle_input(&mut self, input: OscillatorInput) {
+        self.last_input = Some(input.clone());
+        self.index_at_last_input = Some(self.index);
+
+        match input {
+            OscillatorInput::Press(freq) => self.apply_change(OscillatorChange::Frequency(freq)),
+            OscillatorInput::Release => self.index = 0,
+        }
+    }
+
+    fn update_inputs(&mut self) {
+        if let Some(input) = self.inputs.first() {
+            if self.secs_since_start >= input.time {
+                self.handle_input(input.input.clone());
+                self.inputs.remove(0);
+            }
+        }
+    }
 }
 
 impl Clone for Oscillator {
@@ -50,33 +84,37 @@ impl Clone for Oscillator {
         Self {
             wave_function: self.wave_function.clone(),
             index: self.index,
-            beat_length: self.beat_length,
-            beat_number: self.beat_number,
             effects: self.effects.iter().map(|e| e.clone_box()).collect(),
             phase: self.phase,
+            last_input: self.last_input.clone(),
+            index_at_last_input: self.index_at_last_input.clone(),
+            inputs: self.inputs.clone(),
+            secs_since_start: self.secs_since_start,
         }
     }
 }
 
 impl Sound for Oscillator {
-    fn secs_per_beat(&self) -> f32 {
-        self.beat_length
+    fn secs_per_beat(&self) -> Option<f32> {
+        None
     }
 
     fn next_sample(&mut self) -> f32 {
-        let samples_per_beat = *SAMPLE_RATE as f32 * self.beat_length;
-        self.index += 1;
-        if self.index >= samples_per_beat as usize {
-            self.beat_number += 1;
-            self.index = 0;
+        if let Some(OscillatorInput::Release) = self.last_input {
+            return 0.0;
+        } else if self.last_input.is_none() {
+            return 0.0;
         }
 
+        self.index += 1;
         let dt = 1.0 / *SAMPLE_RATE as f32;
 
         self.wave_function.next_value(&mut self.phase, dt)
     }
 
     fn next_grain(&mut self) -> Grain {
+        self.update_inputs();
+
         let mut grain = [0.0; SAMPLES_PER_GRAIN];
         for sample in &mut grain {
             *sample = self.next_sample();
@@ -84,13 +122,10 @@ impl Sound for Oscillator {
 
         let mut oscillator_changes = Vec::new();
         for effect in &mut self.effects {
-            let samples_per_beat = *SAMPLE_RATE as f32 * self.beat_length;
             let time_since_start_of_beat = self.index as f32 / *SAMPLE_RATE as f32;
             let input = EffectInput {
                 grain,
-                beat_number: self.beat_number,
                 time_since_start_of_beat,
-                secs_per_beat: self.beat_length,
             };
             let output = effect.apply(input);
             grain = output.grain;
@@ -104,6 +139,8 @@ impl Sound for Oscillator {
             self.apply_change(change);
         }
 
+        self.secs_since_start += SAMPLES_PER_GRAIN as f32 / *SAMPLE_RATE as f32;
+
         grain
     }
 
@@ -113,10 +150,12 @@ impl Sound for Oscillator {
         Box::new(Self {
             wave_function: self.wave_function.clone(),
             index: self.index,
-            beat_length: self.beat_length,
-            beat_number: self.beat_number,
             effects: self.effects.iter().map(|e| e.clone_box()).collect(),
             phase: self.phase,
+            last_input: self.last_input.clone(),
+            index_at_last_input: self.index_at_last_input.clone(),
+            inputs: self.inputs.clone(),
+            secs_since_start: self.secs_since_start,
         })
     }
 
@@ -127,16 +166,16 @@ impl Sound for Oscillator {
 
 pub struct OscillatorBuilder {
     pub wave_function: Option<WaveFunction>,
-    pub beat_length: Option<f32>,
     pub effects: Vec<Box<dyn Effect>>,
+    pub inputs: Vec<OscillatorInputAtTime>,
 }
 
 impl OscillatorBuilder {
     pub fn new() -> Self {
         Self {
             wave_function: None,
-            beat_length: None,
             effects: Vec::new(),
+            inputs: Vec::new(),
         }
     }
 
@@ -145,24 +184,30 @@ impl OscillatorBuilder {
         self
     }
 
-    pub fn beat_length(mut self, beat_length: f32) -> Self {
-        self.beat_length = Some(beat_length);
-        self
-    }
-
     pub fn effect(mut self, effect: Box<dyn Effect>) -> Self {
         self.effects.push(effect);
         self
     }
 
+    pub fn inputs(mut self, inputs: Vec<OscillatorInputAtTime>) -> Self {
+        self.inputs.extend(inputs);
+        self
+    }
+
     pub fn build(self) -> Oscillator {
+        // sort inputs by time
+        let mut inputs = self.inputs;
+        inputs.sort_by(|a, b| a.time.partial_cmp(&b.time).unwrap());
+
         Oscillator {
             wave_function: Box::new(self.wave_function.unwrap()),
             index: 0,
-            beat_length: self.beat_length.unwrap(),
-            beat_number: 0,
             effects: self.effects,
             phase: 0.0,
+            last_input: None,
+            index_at_last_input: None,
+            inputs,
+            secs_since_start: 0.0,
         }
     }
 }
@@ -346,7 +391,6 @@ impl Number {
                 amplitude: Number::number(plus_or_minus),
                 phase: Number::number(0.0),
             })
-            .beat_length(0.0)
             .build();
 
         Number::oscillator(oscillator).plus_f32(middle)
@@ -360,7 +404,6 @@ impl Number {
                 amplitude: Number::number(plus_or_minus),
                 phase: Number::number(0.0),
             })
-            .beat_length(0.0)
             .build();
 
         Number::oscillator(oscillator).plus_f32(middle)

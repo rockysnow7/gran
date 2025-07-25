@@ -95,9 +95,7 @@ pub type Grain = [f32; SAMPLES_PER_GRAIN];
 /// The data passed to an effect.
 pub struct EffectInput {
     pub grain: Grain,
-    pub beat_number: usize,
     pub time_since_start_of_beat: f32,
-    pub secs_per_beat: f32,
 }
 
 pub trait Sound: Send + Sync {
@@ -106,15 +104,28 @@ pub trait Sound: Send + Sync {
     fn add_effect(&mut self, effect: Box<dyn Effect>);
     fn update_sample_rate(&mut self, sample_rate: usize);
     fn clone_box(&self) -> Box<dyn Sound>;
-    fn secs_per_beat(&self) -> f32;
+    fn secs_per_beat(&self) -> Option<f32>;
+}
+
+#[derive(Clone)]
+pub enum SampleInput {
+    Trigger,
+}
+
+#[derive(Clone)]
+pub struct SampleInputAtTime {
+    pub input: SampleInput,
+    pub time: f32,
 }
 
 pub struct Sample {
     samples: Vec<f32>,
     secs_per_beat: f32,
     index: usize,
-    beat_number: usize,
     pub effects: Vec<Box<dyn Effect>>,
+    secs_since_start: f32,
+    inputs: Vec<SampleInputAtTime>,
+    play: bool,
 }
 
 impl Sample {
@@ -122,6 +133,7 @@ impl Sample {
         samples: Vec<f32>,
         sample_rate: usize,
         secs_per_beat: f32,
+        inputs: Vec<SampleInputAtTime>,
     ) -> Self {
         let target_samples = (sample_rate as f32 * secs_per_beat) as usize;
         let samples = normalize_sample_length(samples, target_samples);
@@ -130,27 +142,54 @@ impl Sample {
             samples,
             secs_per_beat,
             index: 0,
-            beat_number: 0,
             effects: Vec::new(),
+            secs_since_start: 0.0,
+            inputs,
+            play: false,
+        }
+    }
+
+    fn handle_input(&mut self, input: SampleInput) {
+        match input {
+            SampleInput::Trigger => {
+                self.index = 0;
+                self.play = true;
+            }
+        }
+    }
+
+    fn update_inputs(&mut self) {
+        if let Some(input) = self.inputs.first() {
+            if self.secs_since_start >= input.time {
+                self.handle_input(input.input.clone());
+                self.inputs.remove(0);
+            }
         }
     }
 }
 
 impl Sound for Sample {
-    fn secs_per_beat(&self) -> f32 {
-        self.secs_per_beat
+    fn secs_per_beat(&self) -> Option<f32> {
+        Some(self.secs_per_beat)
     }
 
     fn next_sample(&mut self) -> f32 {
+        if !self.play {
+            return 0.0;
+        }
+
         self.index += 1;
         if self.index >= self.samples.len() {
-            self.index %= self.samples.len();
-            self.beat_number += 1;
+            self.play = false;
+            return 0.0;
         }
+
         self.samples[self.index]
     }
 
     fn next_grain(&mut self) -> Grain {
+        self.update_inputs();
+
         let mut grain = [0.0; SAMPLES_PER_GRAIN];
         for sample in &mut grain {
             *sample = self.next_sample();
@@ -160,9 +199,7 @@ impl Sound for Sample {
         for effect in &mut self.effects {
             let input = EffectInput {
                 grain,
-                beat_number: self.beat_number,
                 time_since_start_of_beat,
-                secs_per_beat: self.secs_per_beat,
             };
             let output = effect.apply(input);
             grain = output.grain;
@@ -181,8 +218,10 @@ impl Sound for Sample {
             samples: self.samples.clone(),
             secs_per_beat: self.secs_per_beat,
             index: self.index,
-            beat_number: self.beat_number,
             effects: self.effects.iter().map(|e| e.clone_box()).collect(),
+            secs_since_start: self.secs_since_start,
+            inputs: self.inputs.clone(),
+            play: self.play,
         })
     }
 
@@ -219,6 +258,7 @@ pub struct SampleBuilder {
     sample_rate: Option<usize>,
     secs_per_beat: Option<f32>,
     effects: Vec<Box<dyn Effect>>,
+    inputs: Vec<SampleInputAtTime>,
 }
 
 impl SampleBuilder {
@@ -228,6 +268,7 @@ impl SampleBuilder {
             sample_rate: None,
             secs_per_beat: None,
             effects: Vec::new(),
+            inputs: Vec::new(),
         }
     }
 
@@ -265,12 +306,17 @@ impl SampleBuilder {
         self
     }
 
+    pub fn inputs(mut self, inputs: Vec<SampleInputAtTime>) -> Self {
+        self.inputs = inputs;
+        self
+    }
+
     pub fn build(self) -> Sample {
         let samples = self.samples.unwrap();
         let sample_rate = self.sample_rate.unwrap();
         let secs_per_beat = self.secs_per_beat.unwrap();
 
-        let mut sample = Sample::new(samples, sample_rate, secs_per_beat);
+        let mut sample = Sample::new(samples, sample_rate, secs_per_beat, self.inputs);
         for effect in self.effects {
             sample.add_effect(effect);
         }
@@ -279,59 +325,42 @@ impl SampleBuilder {
     }
 }
 
-fn lcm(a: f32, b: f32) -> f32 {
-    let rat_a = BigRational::from_float(a).unwrap();
-    let rat_b = BigRational::from_float(b).unwrap();
-
-    let num_a = rat_a.numer().clone();
-    let den_a = rat_a.denom().clone();
-    let num_b = rat_b.numer().clone();
-    let den_b = rat_b.denom().clone();
-
-    let num_lcm = (num_a.clone() * num_b.clone()) / gcd(num_a, num_b);
-    let den_gcd = gcd(den_a, den_b);
-
-    let result = BigRational::new(num_lcm, den_gcd);
-
-    result.to_f32().unwrap()
-}
-
 pub struct Composition {
     sounds: Vec<Box<dyn Sound>>,
     effects: Vec<Box<dyn Effect>>,
-    index: usize,
-    beat_number: usize,
-    secs_per_beat: f32,
+    secs_since_start: f32,
 }
 
 impl Composition {
     pub fn new(sounds: Vec<Box<dyn Sound>>, effects: Vec<Box<dyn Effect>>) -> Self {
-        // get the least common multiple of the secs_per_beat of each sound
-        let secs_per_beat = sounds.iter().map(|sound| sound.secs_per_beat()).reduce(|a, b| lcm(a, b)).unwrap();
-
-        Self {
-            sounds,
-            effects,
-            index: 0,
-            beat_number: 0,
-            secs_per_beat,
-        }
+        Self { sounds, effects, secs_since_start: 0.0 }
     }
 }
 
 impl Sound for Composition {
-    fn secs_per_beat(&self) -> f32 {
-        self.secs_per_beat
+    fn secs_per_beat(&self) -> Option<f32> {
+        None
+    }
+
+    fn add_effect(&mut self, effect: Box<dyn Effect>) {
+        self.effects.push(effect);
+    }
+
+    fn clone_box(&self) -> Box<dyn Sound> {
+        Box::new(Self {
+            sounds: self.sounds.iter().map(|s| s.clone_box()).collect(),
+            effects: self.effects.iter().map(|e| e.clone_box()).collect(),
+            secs_since_start: self.secs_since_start,
+        })
+    }
+
+    fn update_sample_rate(&mut self, sample_rate: usize) {
+        for sound in &mut self.sounds {
+            sound.update_sample_rate(sample_rate);
+        }
     }
 
     fn next_sample(&mut self) -> f32 {
-        let samples_per_beat = *SAMPLE_RATE as f32 * self.secs_per_beat;
-        self.index += 1;
-        if self.index >= samples_per_beat as usize {
-            self.index = 0;
-            self.beat_number += 1;
-        }
-
         self.sounds.iter_mut().map(|sound| sound.next_sample()).sum()
     }
 
@@ -344,56 +373,18 @@ impl Sound for Composition {
             }
         }
 
-        let samples_per_beat = *SAMPLE_RATE as f32 * self.secs_per_beat;
-        self.index += SAMPLES_PER_GRAIN;
-        if self.index >= samples_per_beat as usize {
-            self.index = 0;
-            self.beat_number += 1;
-        }
-
-        let time_since_start_of_beat = self.index as f32 / samples_per_beat;
         for effect in &mut self.effects {
             let input = EffectInput {
                 grain,
-                beat_number: self.beat_number,
-                time_since_start_of_beat,
-                secs_per_beat: self.secs_per_beat,
+                time_since_start_of_beat: self.secs_since_start,
             };
             let output = effect.apply(input);
             grain = output.grain;
         }
 
+        self.secs_since_start += SAMPLES_PER_GRAIN as f32 / *SAMPLE_RATE as f32;
+
         grain
-    }
-
-    fn add_effect(&mut self, effect: Box<dyn Effect>) {
-        self.effects.push(effect);
-    }
-
-    fn update_sample_rate(&mut self, sample_rate: usize) {
-        for sound in &mut self.sounds {
-            sound.update_sample_rate(sample_rate);
-        }
-    }
-
-    fn clone_box(&self) -> Box<dyn Sound> {
-        let sounds = self.sounds
-            .iter()
-            .map(|sound| sound.clone_box())
-            .collect();
-
-        let effects = self.effects
-            .iter()
-            .map(|e| e.clone_box())
-            .collect();
-
-        Box::new(Self {
-            sounds,
-            effects,
-            index: self.index,
-            beat_number: self.beat_number,
-            secs_per_beat: self.secs_per_beat,
-        })
     }
 }
 
@@ -418,9 +409,6 @@ impl CompositionBuilder {
     }
 
     pub fn build(self) -> Composition {
-        let sounds = self.sounds;
-        let effects = self.effects;
-
-        Composition::new(sounds, effects)
+        Composition::new(self.sounds, self.effects)
     }
 }
