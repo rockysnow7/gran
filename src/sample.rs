@@ -1,8 +1,9 @@
-use std::{f32::consts::PI, fs::File, io::BufReader};
+mod input;
 
+use crate::{effects::Effect, player::SAMPLE_RATE, sound::{EffectInput, Grain, Sound, SAMPLES_PER_GRAIN}};
+pub use input::{SampleInput, SampleInputAtTime, SampleInputIterator, SampleInputIteratorBuilder};
 use rodio::{Decoder, Source};
-
-use crate::{effects::Effect, sound::{EffectInput, Grain, Sound, SAMPLES_PER_GRAIN}};
+use std::{f32::consts::PI, fs::File, io::BufReader};
 
 /// Returns a Hanning window of the given size.
 fn hanning_window(grain_size: usize) -> Vec<f32> {
@@ -88,24 +89,13 @@ fn normalize_sample_length(samples: Vec<f32>, target_length: usize) -> Vec<f32> 
     }
 }
 
-#[derive(Clone)]
-pub enum SampleInput {
-    Trigger,
-}
-
-#[derive(Clone)]
-pub struct SampleInputAtTime {
-    pub input: SampleInput,
-    pub time: f32,
-}
-
 pub struct Sample {
     samples: Vec<f32>,
     secs_per_beat: f32,
     index: usize,
     pub effects: Vec<Box<dyn Effect>>,
     secs_since_start: f32,
-    inputs: Vec<SampleInputAtTime>,
+    inputs: SampleInputIterator,
     play: bool,
 }
 
@@ -114,7 +104,7 @@ impl Sample {
         samples: Vec<f32>,
         sample_rate: usize,
         secs_per_beat: f32,
-        inputs: Vec<SampleInputAtTime>,
+        inputs: SampleInputIterator,
     ) -> Self {
         let target_samples = (sample_rate as f32 * secs_per_beat) as usize;
         let samples = normalize_sample_length(samples, target_samples);
@@ -140,11 +130,8 @@ impl Sample {
     }
 
     fn update_inputs(&mut self) {
-        if let Some(input) = self.inputs.first() {
-            if self.secs_since_start >= input.time {
-                self.handle_input(input.input.clone());
-                self.inputs.remove(0);
-            }
+        if let Some(input) = self.inputs.next(self.secs_since_start) {
+            self.handle_input(input.input);
         }
     }
 }
@@ -155,6 +142,8 @@ impl Sound for Sample {
     }
 
     fn next_sample(&mut self) -> f32 {
+        self.secs_since_start += 1.0 / *SAMPLE_RATE as f32;
+
         if !self.play {
             return 0.0;
         }
@@ -239,7 +228,7 @@ pub struct SampleBuilder {
     sample_rate: Option<usize>,
     secs_per_beat: Option<f32>,
     effects: Vec<Box<dyn Effect>>,
-    inputs: Vec<SampleInputAtTime>,
+    inputs: Option<SampleInputIterator>,
 }
 
 impl SampleBuilder {
@@ -249,7 +238,7 @@ impl SampleBuilder {
             sample_rate: None,
             secs_per_beat: None,
             effects: Vec::new(),
-            inputs: Vec::new(),
+            inputs: None,
         }
     }
 
@@ -287,8 +276,8 @@ impl SampleBuilder {
         self
     }
 
-    pub fn inputs(mut self, inputs: Vec<SampleInputAtTime>) -> Self {
-        self.inputs = inputs;
+    pub fn inputs(mut self, inputs: SampleInputIterator) -> Self {
+        self.inputs = Some(inputs);
         self
     }
 
@@ -296,8 +285,9 @@ impl SampleBuilder {
         let samples = self.samples.unwrap();
         let sample_rate = self.sample_rate.unwrap();
         let secs_per_beat = self.secs_per_beat.unwrap();
+        let inputs = self.inputs.unwrap();
 
-        let mut sample = Sample::new(samples, sample_rate, secs_per_beat, self.inputs);
+        let mut sample = Sample::new(samples, sample_rate, secs_per_beat, inputs);
         for effect in self.effects {
             sample.add_effect(effect);
         }

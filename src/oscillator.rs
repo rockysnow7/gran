@@ -1,7 +1,9 @@
 mod lfo;
+mod input;
 
 use crate::{effects::{Effect, OscillatorChange}, player::SAMPLE_RATE, sound::{EffectInput, Grain, Sound, SAMPLES_PER_GRAIN}};
 pub use lfo::{Number, WaveFunction};
+pub use input::{OscillatorInput, OscillatorInputAtTime, OscillatorInputIterator, OscillatorInputIteratorBuilder};
 
 /// Convert a note name to a frequency in Hz.
 /// `note_name` is a string like "A4", "C#3", etc.
@@ -19,21 +21,6 @@ pub fn note(note_name: &str) -> f32 {
     let freq = 440.0 * 2.0f32.powf(diff_semitones as f32 / 12.0);
 
     freq
-}
-
-/// An input to an oscillator. Like a simplified form of MIDI.
-#[derive(Clone, Debug)]
-pub enum OscillatorInput {
-    Press(f32), // frequency in Hz
-    PressSame, // press the same frequency as the last input
-    Release,
-}
-
-/// An input to be sent to an oscillator at a given time.
-#[derive(Clone, Debug)]
-pub struct OscillatorInputAtTime {
-    pub input: OscillatorInput,
-    pub time: f32, // in seconds since the start of the oscillator
 }
 
 /// Attack-decay-sustain-release envelope settings for an oscillator.
@@ -67,7 +54,8 @@ pub struct Oscillator {
     index: usize,
     effects: Vec<Box<dyn Effect>>,
     phase: f32,
-    inputs: Vec<OscillatorInputAtTime>,
+    // inputs: Vec<OscillatorInputAtTime>,
+    inputs: OscillatorInputIterator,
     pub state: OscillatorState,
     secs_since_start: f32,
     adsr: ADSR,
@@ -89,7 +77,6 @@ impl Oscillator {
     }
 
     fn handle_input(&mut self, input: OscillatorInput) {
-        // println!("input: {:?} at time {} (buffer: {:?})", input, self.secs_since_start, self.inputs);
         match input {
             OscillatorInput::Press(freq) => {
                 self.apply_change(OscillatorChange::Frequency(freq));
@@ -104,11 +91,8 @@ impl Oscillator {
     }
 
     fn update_inputs(&mut self) {
-        if let Some(input) = self.inputs.first() {
-            if self.secs_since_start >= input.time {
-                self.handle_input(input.input.clone());
-                self.inputs.remove(0);
-            }
+        if let Some(input) = self.inputs.next(self.secs_since_start) {
+            self.handle_input(input.input);
         }
     }
 }
@@ -248,7 +232,7 @@ impl Sound for Oscillator {
 pub struct OscillatorBuilder {
     pub wave_function: Option<WaveFunction>,
     pub effects: Vec<Box<dyn Effect>>,
-    pub inputs: Vec<OscillatorInputAtTime>,
+    pub inputs: Option<OscillatorInputIterator>,
     pub adsr: Option<ADSR>,
 }
 
@@ -257,7 +241,7 @@ impl OscillatorBuilder {
         Self {
             wave_function: None,
             effects: Vec::new(),
-            inputs: Vec::new(),
+            inputs: None,
             adsr: None,
         }
     }
@@ -272,16 +256,8 @@ impl OscillatorBuilder {
         self
     }
 
-    pub fn inputs(mut self, inputs: Vec<OscillatorInputAtTime>) -> Self {
-        self.inputs.extend(inputs);
-        self
-    }
-
-    pub fn auto_play(mut self) -> Self {
-        self.inputs.push(OscillatorInputAtTime {
-            input: OscillatorInput::PressSame,
-            time: 0.0,
-        });
+    pub fn inputs(mut self, inputs: OscillatorInputIterator) -> Self {
+        self.inputs = Some(inputs);
         self
     }
 
@@ -291,10 +267,6 @@ impl OscillatorBuilder {
     }
 
     pub fn build(self) -> Oscillator {
-        // sort inputs by time
-        let mut inputs = self.inputs;
-        inputs.sort_by(|a, b| a.time.partial_cmp(&b.time).unwrap());
-
         let adsr = self.adsr.unwrap_or(ADSR::new(0.1, 0.1, 1.0, 0.1));
 
         Oscillator {
@@ -302,7 +274,7 @@ impl OscillatorBuilder {
             index: 0,
             effects: self.effects,
             phase: 0.0,
-            inputs,
+            inputs: self.inputs.unwrap(),
             state: OscillatorState::Idle,
             secs_since_start: 0.0,
             adsr,
