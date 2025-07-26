@@ -4,7 +4,7 @@ use gran::{
     effects::{LowPassFilter, Saturation, TapeDelay, Volume},
     oscillator::{note, ADSR, OscillatorBuilder, OscillatorInput, OscillatorInputAtTime, WaveFunction},
     play_sound, Number,
-    sounds::CompositionBuilder,
+    sound::CompositionBuilder,
 };
 
 #[tokio::main]

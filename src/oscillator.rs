@@ -1,6 +1,6 @@
 mod lfo;
 
-use crate::{effects::{Effect, OscillatorChange}, player::SAMPLE_RATE, sounds::{EffectInput, Grain, Sound, SAMPLES_PER_GRAIN}};
+use crate::{effects::{Effect, OscillatorChange}, player::SAMPLE_RATE, sound::{EffectInput, Grain, Sound, SAMPLES_PER_GRAIN}};
 pub use lfo::{Number, WaveFunction};
 
 /// Convert a note name to a frequency in Hz.

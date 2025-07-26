@@ -1,4 +1,4 @@
-pub mod sounds;
+pub mod sound;
 pub mod player;
 pub mod effects;
 pub mod oscillator;

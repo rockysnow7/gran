@@ -1,4 +1,4 @@
-use crate::{Number, player::SAMPLE_RATE, sounds::{EffectInput, Grain, SAMPLES_PER_GRAIN}};
+use crate::{Number, player::SAMPLE_RATE, sound::{EffectInput, Grain, SAMPLES_PER_GRAIN}};
 use std::f32::consts::PI;
 
 #[derive(Debug)]

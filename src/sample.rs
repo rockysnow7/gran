@@ -2,7 +2,7 @@ use std::{f32::consts::PI, fs::File, io::BufReader};
 
 use rodio::{Decoder, Source};
 
-use crate::{effects::Effect, sounds::{EffectInput, Grain, Sound, SAMPLES_PER_GRAIN}};
+use crate::{effects::Effect, sound::{EffectInput, Grain, Sound, SAMPLES_PER_GRAIN}};
 
 /// Returns a Hanning window of the given size.
 fn hanning_window(grain_size: usize) -> Vec<f32> {
