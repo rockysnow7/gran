@@ -332,7 +332,7 @@ impl OscillatorBuilder {
         let mut inputs = self.inputs;
         inputs.sort_by(|a, b| a.time.partial_cmp(&b.time).unwrap());
 
-        let adsr = self.adsr.unwrap_or(ADSR::new(0.0, 0.0, 1.0, 0.0));
+        let adsr = self.adsr.unwrap_or(ADSR::new(0.1, 0.1, 1.0, 0.1));
 
         Oscillator {
             wave_function: Box::new(self.wave_function.unwrap()),
