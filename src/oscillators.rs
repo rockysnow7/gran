@@ -1,5 +1,8 @@
-use std::f32::consts::PI;
+mod lfo;
+
 use crate::{effects::{Effect, OscillatorChange}, player::SAMPLE_RATE, sounds::{EffectInput, Grain, Sound, SAMPLES_PER_GRAIN}};
+pub use lfo::{Number, WaveFunction};
+use lfo::{LFO, LFOBuilder};
 
 /// Convert a note name to a frequency in Hz.
 /// `note_name` is a string like "A4", "C#3", etc.
@@ -49,7 +52,7 @@ impl ADSR {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum OscillatorState {
     Idle,
     Play {
@@ -66,7 +69,7 @@ pub struct Oscillator {
     effects: Vec<Box<dyn Effect>>,
     phase: f32,
     inputs: Vec<OscillatorInputAtTime>,
-    state: OscillatorState,
+    pub state: OscillatorState,
     secs_since_start: f32,
     adsr: ADSR,
 }
@@ -109,46 +112,6 @@ impl Oscillator {
             }
         }
     }
-
-    // /// Get the next sample of the oscillator without checking the input queue or ADSR state.
-    // fn next_sample_raw(&mut self) -> f32 {
-    //     self.secs_since_start += 1.0 / *SAMPLE_RATE as f32;
-    //     self.index += 1;
-
-    //     let dt = 1.0 / *SAMPLE_RATE as f32;
-
-    //     self.wave_function.next_value(&mut self.phase, dt)
-    // }
-
-    // /// Get the next grain of the oscillator without checking the input queue or ADSR state.
-    // fn next_grain_raw(&mut self) -> Grain {
-    //     let mut grain = [0.0; SAMPLES_PER_GRAIN];
-    //     for sample in &mut grain {
-    //         *sample = self.next_sample_raw();
-    //     }
-
-    //     let mut oscillator_changes = Vec::new();
-    //     for effect in &mut self.effects {
-    //         let time_since_start_of_beat = self.index as f32 / *SAMPLE_RATE as f32;
-    //         let input = EffectInput {
-    //             grain,
-    //             time_since_start_of_beat,
-    //             time_since_release: self.secs_since_release,
-    //         };
-    //         let output = effect.apply(input);
-    //         grain = output.grain;
-
-    //         for change in output.oscillator_changes {
-    //             oscillator_changes.push(change);
-    //         }
-    //     }
-
-    //     for change in oscillator_changes {
-    //         self.apply_change(change);
-    //     }
-
-    //     grain
-    // }
 }
 
 impl Clone for Oscillator {
@@ -174,6 +137,7 @@ impl Sound for Oscillator {
     fn next_sample(&mut self) -> f32 {
         self.secs_since_start += 1.0 / *SAMPLE_RATE as f32;
 
+        // println!("state: {:?}", self.state);
         if let OscillatorState::Idle = &self.state {
             return 0.0;
         }
@@ -343,246 +307,6 @@ impl OscillatorBuilder {
             state: OscillatorState::Idle,
             secs_since_start: 0.0,
             adsr,
-        }
-    }
-}
-
-#[derive(Clone)]
-pub enum WaveFunction {
-    Sine {
-        frequency: Number,
-        amplitude: Number,
-        phase: Number,
-    },
-    Square {
-        frequency: Number,
-        amplitude: Number,
-        phase: Number,
-    },
-    Triangle {
-        frequency: Number,
-        amplitude: Number,
-        phase: Number,
-    },
-    Sawtooth {
-        frequency: Number,
-        amplitude: Number,
-        phase: Number,
-    },
-    WhiteNoise {
-        amplitude: Number,
-    },
-    PinkNoise {
-        amplitude: Number,
-        generators: Vec<f32>,
-        call_count: usize,
-    },
-}
-
-impl WaveFunction {
-    pub fn pink_noise(amplitude: Number, num_generators: usize) -> Self {
-        let generators = vec![0.0; num_generators];
-
-        Self::PinkNoise { amplitude, generators, call_count: 0 }
-    }
-
-    pub fn next_value(&mut self, accumulated_phase: &mut f32, dt: f32) -> f32 {
-        match self {
-            WaveFunction::Sine { frequency, amplitude, phase } => {
-                let freq = frequency.next_value();
-                let amp = amplitude.next_value();
-                let phase_offset = phase.next_value();
-
-                *accumulated_phase += 2.0 * PI * freq * dt;
-                *accumulated_phase = *accumulated_phase % (2.0 * PI);
-                
-                amp * (*accumulated_phase + phase_offset).sin()
-            },
-            WaveFunction::Square { frequency, amplitude, phase } => {
-                let freq = frequency.next_value();
-                let amp = amplitude.next_value();
-                let phase_offset = phase.next_value();
-
-                *accumulated_phase += 2.0 * PI * freq * dt;
-                *accumulated_phase = *accumulated_phase % (2.0 * PI);
-
-                let sin = (*accumulated_phase + phase_offset).sin();
-                let sign = if sin > 0.0 { 1.0 } else { -1.0 };
-
-                amp * sign
-            },
-            WaveFunction::Triangle { frequency, amplitude, phase } => {
-                let freq = frequency.next_value();
-                let amp = amplitude.next_value();
-                let phase_offset = phase.next_value();
-
-                *accumulated_phase += 2.0 * PI * freq * dt;
-                *accumulated_phase = *accumulated_phase % (2.0 * PI);
-
-                // normaalise phase from radians to [0, 1]
-                let normalized_phase = (*accumulated_phase + phase_offset) / (2.0 * PI);
-                let normalized_phase = normalized_phase - normalized_phase.floor();
-
-                let triangle = if normalized_phase < 0.5 {
-                    4.0 * normalized_phase - 1.0  // -1 to 1 for first half
-                } else {
-                    3.0 - 4.0 * normalized_phase   // 1 to -1 for second half
-                };
-
-                amp * triangle
-            },
-            WaveFunction::Sawtooth { frequency, amplitude, phase } => {
-                let freq = frequency.next_value();
-                let amp = amplitude.next_value();
-                let phase_offset = phase.next_value();
-
-                *accumulated_phase += 2.0 * PI * freq * dt;
-                *accumulated_phase = *accumulated_phase % (2.0 * PI);
-
-                // normaalise phase from radians to [0, 1]
-                let normalized_phase = (*accumulated_phase + phase_offset) / (2.0 * PI);
-                let normalized_phase = normalized_phase - normalized_phase.floor();
-
-                let sawtooth = 2.0 * normalized_phase - 1.0;
-
-                amp * sawtooth
-            },
-            WaveFunction::WhiteNoise { amplitude } => {
-                let amp = amplitude.next_value();
-                let noise = rand::random_range(-1.0..=1.0);
-
-                amp * noise
-            },
-            WaveFunction::PinkNoise { amplitude, generators, call_count } => {
-                // voss-mccartney
-                let amp = amplitude.next_value();
-
-                if *call_count >= 2usize.pow(generators.len() as u32) {
-                    *call_count = 0;
-                }
-
-                // update the generators
-                for i in 0..generators.len() {
-                    if *call_count % 2usize.pow(i as u32) == 0 {
-                        generators[i] = rand::random_range(-1.0..=1.0);
-                    }
-                }
-
-                let scale_factor = 1.0 / 3.0f32.sqrt();
-                let noise = generators.iter().sum::<f32>() * scale_factor;
-
-                *call_count += 1;
-
-                amp * noise
-            },
-        }
-    }
-}
-
-pub enum Number {
-    Number {
-        value: f32,
-        plus: f32,
-        mul: f32,
-    },
-    Oscillator {
-        oscillator: Oscillator,
-        plus: f32,
-        mul: f32,
-    },
-}
-
-impl Clone for Number {
-    fn clone(&self) -> Self {
-        match self {
-            Number::Number { value, plus, mul } => Number::Number {
-                value: value.clone(),
-                plus: *plus,
-                mul: *mul,
-            },
-            Number::Oscillator { oscillator, plus, mul } => Number::Oscillator {
-                oscillator: oscillator.clone(),
-                plus: *plus,
-                mul: *mul,
-            },
-        }
-    }
-}
-
-impl Number {
-    pub fn number(value: f32) -> Self {
-        Number::Number { value, plus: 0.0, mul: 1.0 }
-    }
-
-    pub fn oscillator(oscillator: Oscillator) -> Self {
-        Number::Oscillator { oscillator, plus: 0.0, mul: 1.0 }
-    }
-
-    /// Create a sine wave that oscillates around a middle value with a given frequency.
-    pub fn sine_around(middle: f32, plus_or_minus: f32, frequency: f32) -> Self {
-        let oscillator = OscillatorBuilder::new()
-            .wave_function(WaveFunction::Sine {
-                frequency: Number::number(frequency),
-                amplitude: Number::number(plus_or_minus),
-                phase: Number::number(0.0),
-            })
-            .auto_play()
-            .build();
-
-        Number::oscillator(oscillator).plus_f32(middle)
-    }
-
-    /// Create a square wave that oscillates around a middle value with a given frequency.
-    pub fn square_around(middle: f32, plus_or_minus: f32, frequency: f32) -> Self {
-        let oscillator = OscillatorBuilder::new()
-            .wave_function(WaveFunction::Square {
-                frequency: Number::number(frequency),
-                amplitude: Number::number(plus_or_minus),
-                phase: Number::number(0.0),
-            })
-            .auto_play()
-            .build();
-
-        Number::oscillator(oscillator).plus_f32(middle)
-    }
-
-    pub fn next_value(&mut self) -> f32 {
-        match self {
-            Number::Number { value, plus, mul } => *mul * *value + *plus,
-            Number::Oscillator { oscillator, plus, mul } => {
-                let value = oscillator.next_sample();
-                *mul * value + *plus
-            },
-        }
-    }
-
-    pub fn plus_f32(self, rhs: f32) -> Self {
-        match self {
-            Number::Number { value, plus, mul } => Number::Number {
-                value: value.clone(),
-                plus: plus + rhs,
-                mul: mul.clone(),
-            },
-            Number::Oscillator { oscillator, plus, mul } => Number::Oscillator {
-                oscillator: oscillator.clone(),
-                plus: plus + rhs,
-                mul: mul.clone(),
-            },
-        }
-    }
-
-    pub fn mul_f32(self, rhs: f32) -> Self {
-        match self {
-            Number::Number { value, plus, mul } => Number::Number {
-                value: value.clone(),
-                plus: plus,
-                mul: mul * rhs,
-            },
-            Number::Oscillator { oscillator, plus, mul } => Number::Oscillator {
-                oscillator: oscillator.clone(),
-                plus: plus,
-                mul: mul * rhs,
-            },
         }
     }
 }

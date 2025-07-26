@@ -4,3 +4,4 @@ pub mod effects;
 pub mod oscillators;
 
 pub use player::play_sound;
+pub use oscillators::Number;
