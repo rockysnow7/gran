@@ -52,7 +52,7 @@ impl OnePoleFilter {
         let output = cutoff * sample + (1.0 - cutoff) * self.previous_output;
         self.previous_output = output;
 
-        let saturated = (0.9 * output).tanh() * 1.2;
+        let saturated = (output * 0.7).tanh() * 1.4;
 
         saturated
     }
@@ -79,7 +79,7 @@ impl LowPassFilter {
         if self.poles.len() == 4 { // only do feedback for 4-pole filter, anything less can't be heard and anything more kills your ears
             let resonance = self.resonance.next_value();
             assert!(resonance >= 0.0 && resonance <= 1.0);
-            let feedback = 4.0 * resonance * self.poles.last().unwrap().previous_output;
+            let feedback = 5.5 * resonance * self.poles.last().unwrap().previous_output;
             sample -= feedback;
         }
 

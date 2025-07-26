@@ -18,15 +18,15 @@ async fn main() {
         .adsr(ADSR::new(1.0, 0.2, 0.5, 1.0))
         .effect(Box::new(Volume(Number::number(0.7))))
         .effect(Box::new(LowPassFilter::new(
-            Number::sine_around(600.0, 100.0, 1.0),
-            Number::number(0.8),
+            Number::sine_around(600.0, 200.0, 1.0),
+            Number::number(0.75),
             4,
         )))
-        .effect(Box::new(Saturation::new(
-            Number::number(3.0),
-            Number::number(1.0),
-            0.5,
-        )))
+        // .effect(Box::new(Saturation::new(
+        //     Number::number(3.0),
+        //     Number::number(0.5),
+        //     0.5,
+        // )))
         .inputs(vec![
             OscillatorInputAtTime {
                 input: OscillatorInput::Press(note("C2")),
@@ -63,7 +63,7 @@ async fn main() {
     let mut composition = CompositionBuilder::new()
         .sound(Box::new(pink_noise))
         .sound(Box::new(bass))
-        // .effect(Box::new(TapeDelay::light(0.5)))
+        .effect(Box::new(TapeDelay::light(0.5)))
         .build();
 
     play_sound(&mut composition);
