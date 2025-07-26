@@ -2,7 +2,6 @@ mod lfo;
 
 use crate::{effects::{Effect, OscillatorChange}, player::SAMPLE_RATE, sounds::{EffectInput, Grain, Sound, SAMPLES_PER_GRAIN}};
 pub use lfo::{Number, WaveFunction};
-use lfo::{LFO, LFOBuilder};
 
 /// Convert a note name to a frequency in Hz.
 /// `note_name` is a string like "A4", "C#3", etc.

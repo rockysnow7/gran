@@ -1,7 +1,7 @@
 #![warn(clippy::all, clippy::pedantic, unused_crate_dependencies)]
 
 use gran::{
-    effects::{Filter, Saturation, TapeDelay, Volume},
+    effects::{LowPassFilter, Saturation, TapeDelay, Volume},
     oscillators::{note, ADSR, OscillatorBuilder, OscillatorInput, OscillatorInputAtTime, WaveFunction},
     play_sound, Number,
     sounds::CompositionBuilder,
@@ -15,27 +15,42 @@ async fn main() {
             amplitude: Number::number(0.7),
             phase: Number::number(0.0),
         })
-        // .adsr(ADSR::new(0.1, 0.1, 0.5, 1.0))
+        .adsr(ADSR::new(1.0, 0.2, 0.5, 1.0))
         .effect(Box::new(Volume(Number::number(0.7))))
-        .effect(Box::new(Filter::low_pass(
-            // Number::number(300.0),
-            Number::sine_around(300.0, 200.0, 1.0),
-            Number::number(0.5),
+        .effect(Box::new(LowPassFilter::new(
+            Number::sine_around(600.0, 100.0, 1.0),
+            Number::number(0.8),
+            4,
         )))
         .effect(Box::new(Saturation::new(
-            Number::number(4.0),
-            Number::number(0.5),
-            0.4,
+            Number::number(3.0),
+            Number::number(1.0),
+            0.5,
         )))
-        .effect(Box::new(TapeDelay::light(1.0)))
         .inputs(vec![
             OscillatorInputAtTime {
                 input: OscillatorInput::Press(note("C2")),
                 time: 0.0,
             },
             OscillatorInputAtTime {
-                input: OscillatorInput::Release,
+                input: OscillatorInput::Press(note("E2")),
+                time: 2.0,
+            },
+            OscillatorInputAtTime {
+                input: OscillatorInput::Press(note("G2")),
                 time: 4.0,
+            },
+            OscillatorInputAtTime {
+                input: OscillatorInput::Press(note("C2")),
+                time: 8.0,
+            },
+            OscillatorInputAtTime {
+                input: OscillatorInput::Press(note("E2")),
+                time: 10.0,
+            },
+            OscillatorInputAtTime {
+                input: OscillatorInput::Press(note("G2")),
+                time: 12.0,
             },
         ])
         .build();
@@ -48,6 +63,7 @@ async fn main() {
     let mut composition = CompositionBuilder::new()
         .sound(Box::new(pink_noise))
         .sound(Box::new(bass))
+        // .effect(Box::new(TapeDelay::light(0.5)))
         .build();
 
     play_sound(&mut composition);

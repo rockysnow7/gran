@@ -38,95 +38,62 @@ impl Effect for Volume {
     }
 }
 
-/// A low-pass or high-pass filter.
 #[derive(Clone)]
-pub enum Filter {
-    LowPass {
-        cutoff_frequency: Number,
-        resonance: Number,
-        state_1: f32,
-        state_2: f32,
-        previous_cutoff: f32,
-    },
-    HighPass {
-        cutoff_frequency: Number,
-        resonance: Number,
-        state_1: f32,
-        state_2: f32,
-        previous_cutoff: f32,
-    },
+pub struct OnePoleFilter {
+    pub previous_output: f32,
 }
 
-impl Filter {
-    pub fn low_pass(cutoff_frequency: Number, resonance: Number) -> Self {
-        Self::LowPass {
-            cutoff_frequency,
-            resonance,
-            state_1: 0.0,
-            state_2: 0.0,
-            previous_cutoff: 0.0,
-        }
+impl OnePoleFilter {
+    pub fn new() -> Self {
+        Self { previous_output: 0.0 }
     }
 
-    pub fn high_pass(cutoff_frequency: Number, resonance: Number) -> Self {
-        Self::HighPass {
-            cutoff_frequency,
-            resonance,
-            state_1: 0.0,
-            state_2: 0.0,
-            previous_cutoff: 0.0,
-        }
-    }
+    fn process_sample(&mut self, sample: f32, cutoff: f32) -> f32 {
+        let output = cutoff * sample + (1.0 - cutoff) * self.previous_output;
+        self.previous_output = output;
 
-    pub fn process_sample(&mut self, sample: f32) -> f32 {
-        match self {
-            Self::LowPass { cutoff_frequency, resonance, state_1, state_2, previous_cutoff } => {
-                let cutoff = cutoff_frequency.next_value();
-                let resonance = resonance.next_value();
-                assert!(resonance < 0.95); // to save your ears
+        let saturated = (0.9 * output).tanh() * 1.2;
 
-                let cuttoff_smooth = 0.9 * *previous_cutoff + 0.1 * cutoff;
-                *previous_cutoff = cuttoff_smooth;
-
-                let omega = 2.0 * PI * cuttoff_smooth / *SAMPLE_RATE as f32;
-                let g = omega.tan();
-                let k = 2.0 - 2.0 * resonance;
-
-                let v_1 = (sample - *state_2 - k * *state_1) / (1.0 + k * g + g * g);
-                let v_2 = *state_1 + g * v_1;
-                let v_3 = *state_2 + g * v_2;
-
-                *state_1 = v_2;
-                *state_2 = v_3;
-
-                v_3
-            },
-            Self::HighPass { cutoff_frequency, resonance, state_1, state_2, previous_cutoff } => {
-                let cutoff = cutoff_frequency.next_value();
-                let resonance = resonance.next_value();
-                assert!(resonance < 0.95); // to save your ears
-
-                let cuttoff_smooth = 0.9 * *previous_cutoff + 0.1 * cutoff;
-                *previous_cutoff = cuttoff_smooth;
-
-                let omega = 2.0 * PI * cuttoff_smooth / *SAMPLE_RATE as f32;
-                let g = omega.tan();
-                let k = 2.0 - 2.0 * resonance;
-
-                let v_1 = (sample - *state_2 - k * *state_1) / (1.0 + k * g + g * g);
-                let v_2 = *state_1 + g * v_1;
-                let v_3 = *state_2 + g * v_2;
-
-                *state_1 = v_2;
-                *state_2 = v_3;
-
-                v_1
-            },
-        }
+        saturated
     }
 }
 
-impl Effect for Filter {
+#[derive(Clone)]
+pub struct LowPassFilter {
+    cutoff_frequency: Number,
+    resonance: Number,
+    poles: Vec<OnePoleFilter>,
+}
+
+impl LowPassFilter {
+    pub fn new(cutoff_frequency: Number, resonance: Number, num_poles: usize) -> Self {
+        let mut poles = Vec::new();
+        for _ in 0..num_poles {
+            poles.push(OnePoleFilter::new());
+        }
+
+        Self { cutoff_frequency, resonance, poles }
+    }
+
+    fn process_sample(&mut self, mut sample: f32) -> f32 {
+        if self.poles.len() == 4 { // only do feedback for 4-pole filter, anything less can't be heard and anything more kills your ears
+            let resonance = self.resonance.next_value();
+            assert!(resonance >= 0.0 && resonance <= 1.0);
+            let feedback = 4.0 * resonance * self.poles.last().unwrap().previous_output;
+            sample -= feedback;
+        }
+
+        let cutoff_frequency = self.cutoff_frequency.next_value();
+        let cutoff = 1.0 - (-2.0 * PI * cutoff_frequency / *SAMPLE_RATE as f32).exp();
+        for pole in &mut self.poles {
+            sample = pole.process_sample(sample, cutoff);
+        }
+
+        sample
+    }
+}
+
+impl Effect for LowPassFilter {
     fn clone_box(&self) -> Box<dyn Effect> {
         Box::new(self.clone())
     }
@@ -224,7 +191,7 @@ pub struct TapeDelay {
     feedback: Number,
     wow_oscillator: Number,
     flutter_oscillator: Number,
-    low_pass_filter: Filter,
+    low_pass_filter: LowPassFilter,
     saturation: Saturation,
 }
 
@@ -287,7 +254,7 @@ impl TapeDelay {
             feedback,
             wow_oscillator: Number::sine_around(0.0, wow_range, wow_speed),
             flutter_oscillator: Number::sine_around(0.0, flutter_range, flutter_speed),
-            low_pass_filter: Filter::low_pass(Number::number(6000.0), Number::number(0.3)),
+            low_pass_filter: LowPassFilter::new(Number::number(6000.0), Number::number(0.3), 1),
             saturation: Saturation::new(Number::number(2.0), Number::number(0.7), 0.5),
         }
     }
