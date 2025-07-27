@@ -199,6 +199,10 @@ fn poly_blep(phase: f32, phase_increment: f32) -> f32 {
 }
 
 impl WaveFunction {
+    pub fn white_noise(amplitude: Number) -> Self {
+        Self::WhiteNoise { amplitude }
+    }
+
     pub fn pink_noise(amplitude: Number, num_generators: usize) -> Self {
         let generators = vec![0.0; num_generators];
 

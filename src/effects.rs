@@ -58,25 +58,58 @@ impl OnePoleFilter {
     }
 }
 
-/// A ladder filter with a variable number of poles. If you use four poles, you can have feedback.
 #[derive(Clone)]
-pub struct LowPassFilter {
+pub enum FilterType {
+    LowPass,
+    HighPass,
+    BandPass,
+    Notch,
+}
+
+#[derive(Clone)]
+pub struct Filter {
+    mode: FilterType,
     cutoff_frequency: Number,
     resonance: Number,
     poles: Vec<OnePoleFilter>,
+    stage_outputs: Vec<f32>,
 }
 
-impl LowPassFilter {
-    pub fn new(cutoff_frequency: Number, resonance: Number, num_poles: usize) -> Self {
+impl Filter {
+    pub fn new(mode: FilterType, cutoff_frequency: Number, resonance: Number, num_poles: usize) -> Self {
         let mut poles = Vec::new();
         for _ in 0..num_poles {
             poles.push(OnePoleFilter::new());
         }
 
-        Self { cutoff_frequency, resonance, poles }
+        Self {
+            mode,
+            cutoff_frequency,
+            resonance,
+            poles,
+            stage_outputs: vec![0.0; num_poles + 1],
+        }
+    }
+
+    pub fn new_low_pass(cutoff_frequency: Number, resonance: Number, num_poles: usize) -> Self {
+        Self::new(FilterType::LowPass, cutoff_frequency, resonance, num_poles)
+    }
+
+    pub fn new_high_pass(cutoff_frequency: Number, resonance: Number, num_poles: usize) -> Self {
+        Self::new(FilterType::HighPass, cutoff_frequency, resonance, num_poles)
+    }
+
+    pub fn new_band_pass(cutoff_frequency: Number, resonance: Number, num_poles: usize) -> Self {
+        Self::new(FilterType::BandPass, cutoff_frequency, resonance, num_poles)
+    }
+
+    pub fn new_notch(cutoff_frequency: Number, resonance: Number, num_poles: usize) -> Self {
+        Self::new(FilterType::Notch, cutoff_frequency, resonance, num_poles)
     }
 
     fn process_sample(&mut self, mut sample: f32) -> f32 {
+        self.stage_outputs[0] = sample;
+
         if self.poles.len() == 4 { // only do feedback for 4-pole filter, anything less can't be heard and anything more kills your ears
             let resonance = self.resonance.next_value();
             assert!(resonance >= 0.0 && resonance <= 1.0);
@@ -86,15 +119,42 @@ impl LowPassFilter {
 
         let cutoff_frequency = self.cutoff_frequency.next_value();
         let cutoff = 1.0 - (-2.0 * PI * cutoff_frequency / *SAMPLE_RATE as f32).exp();
-        for pole in &mut self.poles {
+        for (i, pole) in self.poles.iter_mut().enumerate() {
             sample = pole.process_sample(sample, cutoff);
+            self.stage_outputs[i+1] = sample;
         }
 
-        sample
+        match self.mode {
+            FilterType::LowPass => *self.stage_outputs.last().unwrap(),
+            FilterType::HighPass => {
+                let mut hp = self.stage_outputs[0];
+                for i in 0..self.poles.len() {
+                    let sign = if i % 2 == 0 { -1.0 } else { 1.0 };
+                    hp += sign * self.stage_outputs[i+1];
+                }
+
+                hp
+            },
+            FilterType::BandPass => {
+                let final_output = self.stage_outputs.last().unwrap();
+                if self.poles.len() >= 2 {
+                    let index = self.poles.len() / 2;
+                    self.stage_outputs[index] - final_output
+                } else {
+                    self.stage_outputs[0] - final_output
+                }
+            },
+            FilterType::Notch => {
+                let final_output = self.stage_outputs.last().unwrap();
+                let hp = self.stage_outputs[0] - final_output;
+
+                (final_output + hp) / 2.0
+            },
+        }
     }
 }
 
-impl Effect for LowPassFilter {
+impl Effect for Filter {
     fn clone_box(&self) -> Box<dyn Effect> {
         Box::new(self.clone())
     }
@@ -192,7 +252,7 @@ pub struct TapeDelay {
     feedback: Number,
     wow_oscillator: Number,
     flutter_oscillator: Number,
-    low_pass_filter: LowPassFilter,
+    low_pass_filter: Filter,
     saturation: Saturation,
 }
 
@@ -255,7 +315,7 @@ impl TapeDelay {
             feedback,
             wow_oscillator: Number::sine_around(0.0, wow_range, wow_speed),
             flutter_oscillator: Number::sine_around(0.0, flutter_range, flutter_speed),
-            low_pass_filter: LowPassFilter::new(Number::number(6000.0), Number::number(0.3), 1),
+            low_pass_filter: Filter::new_low_pass(Number::number(6000.0), Number::number(0.3), 1),
             saturation: Saturation::new(Number::number(2.0), Number::number(0.7), 0.5),
         }
     }
