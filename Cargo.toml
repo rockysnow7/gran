@@ -14,12 +14,6 @@ path = "src/main.rs"
 [dependencies]
 cpal = "0.16.0"
 hound = "3.5.1"
-num = "0.4.3"
-num-integer = "0.1.46"
-num-rational = "0.4.2"
-pitch_shift = "1.0.0"
 rand = "0.9.1"
 rodio = "0.21.1"
-rubato = "0.16.2"
-# rustfft = "6.4.0"
 tokio = { version = "1.46.1", features = ["full"] }
