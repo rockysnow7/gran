@@ -58,6 +58,7 @@ impl OnePoleFilter {
     }
 }
 
+/// A ladder filter with a variable number of poles. If you use four poles, you can have feedback.
 #[derive(Clone)]
 pub struct LowPassFilter {
     cutoff_frequency: Number,
