@@ -184,6 +184,20 @@ pub enum WaveFunction {
     },
 }
 
+fn poly_blep(phase: f32, phase_increment: f32) -> f32 {
+    if phase < phase_increment {
+        let t = phase / phase_increment;
+
+        -t * t + 2.0 * t - 1.0 // -t^2 + 2t - 1
+    } else if phase > 1.0 - phase_increment {
+        let t = (phase - 1.0) / phase_increment;
+
+        t * t + 2.0 * t + 1.0 // t^2 + 2t + 1
+    } else {
+        0.0
+    }
+}
+
 impl WaveFunction {
     pub fn pink_noise(amplitude: Number, num_generators: usize) -> Self {
         let generators = vec![0.0; num_generators];
@@ -205,16 +219,26 @@ impl WaveFunction {
             },
             WaveFunction::Square { frequency, amplitude, phase } => {
                 let freq = frequency.next_value();
-                let amp = amplitude.next_value();
-                let phase_offset = phase.next_value();
-
+                
                 *accumulated_phase += 2.0 * PI * freq * dt;
                 *accumulated_phase = *accumulated_phase % (2.0 * PI);
 
-                let sin = (*accumulated_phase + phase_offset).sin();
-                let sign = if sin > 0.0 { 1.0 } else { -1.0 };
+                let phase_offset = phase.next_value();
+                let normalized_phase = (*accumulated_phase + phase_offset) / (2.0 * PI);
+                let normalized_phase = normalized_phase - normalized_phase.floor();
 
-                amp * sign
+                let mut square = if normalized_phase < 0.5 { 1.0 } else { -1.0 };
+
+                // smooth the rising edge
+                let phase_increment = freq / *SAMPLE_RATE as f32;
+                square += poly_blep(normalized_phase, phase_increment);
+                
+                // smooth the falling edge
+                let shifted_phase = (normalized_phase + 0.5) % 1.0;
+                square -= poly_blep(shifted_phase, phase_increment);
+
+                let amp = amplitude.next_value();
+                amp * square
             },
             WaveFunction::Triangle { frequency, amplitude, phase } => {
                 let freq = frequency.next_value();
@@ -248,7 +272,10 @@ impl WaveFunction {
                 let normalized_phase = (*accumulated_phase + phase_offset) / (2.0 * PI);
                 let normalized_phase = normalized_phase - normalized_phase.floor();
 
-                let sawtooth = 2.0 * normalized_phase - 1.0;
+                let mut sawtooth = 2.0 * normalized_phase - 1.0;
+
+                let phase_increment = freq / *SAMPLE_RATE as f32;
+                sawtooth -= poly_blep(normalized_phase, phase_increment);
 
                 amp * sawtooth
             },
