@@ -6,45 +6,66 @@ use gran::{
 
 #[tokio::main]
 async fn main() {
+    let inputs = OscillatorInputIteratorBuilder::new()
+        .input(OscillatorInputAtTime {
+            input: OscillatorInput::Press(note("C3")),
+            time: 0.0,
+        })
+        .input(OscillatorInputAtTime {
+            input: OscillatorInput::Release,
+            time: 0.3,
+        })
+        .input(OscillatorInputAtTime {
+            input: OscillatorInput::Press(note("E3")),
+            time: 0.5,
+        })
+        .input(OscillatorInputAtTime {
+            input: OscillatorInput::Release,
+            time: 0.75,
+        })
+        .input(OscillatorInputAtTime {
+            input: OscillatorInput::Press(note("E3")),
+            time: 1.0,
+        })
+        .input(OscillatorInputAtTime {
+            input: OscillatorInput::Release,
+            time: 1.25,
+        })
+        .input(OscillatorInputAtTime {
+            input: OscillatorInput::Press(note("E3")),
+            time: 1.5,
+        })
+        .input(OscillatorInputAtTime {
+            input: OscillatorInput::Release,
+            time: 1.75,
+        })
+        .repeat_after(0.25)
+        .build();
+
     let bass = OscillatorBuilder::new()
         .wave_function(WaveFunction::Sawtooth {
             frequency: Number::number(0.0),
             amplitude: Number::number(1.0),
             phase: Number::number(0.0),
         })
-        // .wave_function(WaveFunction::white_noise(Number::number(0.1)))
-        .effect(Box::new(Volume(Number::number(1.5))))
-        // .effect(Box::new(Filter::new_notch(
-        //     Number::sine_around(10010.0, 19980.0, 0.2),
-        //     // Number::number(2000.0),
-        //     Number::number(1.0),
-        //     4,
-        // )))
-        .effect(Box::new(Saturation::new(
-            Number::number(1.0),
+        .adsr(ADSR {
+            attack_duration: 0.2,
+            decay_duration: 0.05,
+            sustain_amplitude_multiplier: 0.8,
+            release_duration: 0.3,
+        })
+        .effect(Box::new(Volume(Number::number(1.0))))
+        .effect(Box::new(Filter::new_low_pass(
+            Number::sine_around(600.0, 50.0, 2.0),
             Number::number(0.5),
-            1.0,
+            4,
         )))
-        .inputs(OscillatorInputIteratorBuilder::new()
-            .input(OscillatorInputAtTime {
-                input: OscillatorInput::Press(note("C3")),
-                time: 0.0,
-            })
-            // .input(OscillatorInputAtTime {
-            //     input: OscillatorInput::Press(note("E2")),
-            //     time: 2.0,
-            // })
-            // .input(OscillatorInputAtTime {
-            //     input: OscillatorInput::Press(note("G2")),
-            //     time: 4.0,
-            // })
-            // .repeat_after(4.0)
-            .build()
-        )
+        .effect(Box::new(Saturation::new(Number::number(8.0), Number::number(1.0), 1.0)))
+        .inputs(inputs)
         .build();
 
     let pink_noise = OscillatorBuilder::new()
-        .wave_function(WaveFunction::pink_noise(Number::number(0.0005), 10))
+        .wave_function(WaveFunction::pink_noise(Number::number(0.005), 10))
         .inputs(OscillatorInputIteratorBuilder::new()
             .input(OscillatorInputAtTime {
                 input: OscillatorInput::PressSame,
@@ -55,9 +76,9 @@ async fn main() {
         .build();
 
     let mut composition = CompositionBuilder::new()
-        // .sound(Box::new(pink_noise))
+        .sound(Box::new(pink_noise))
         .sound(Box::new(bass))
-        // .effect(Box::new(TapeDelay::light(0.5)))
+        .effect(Box::new(TapeDelay::light(0.05)))
         .build();
 
     play_sound(&mut composition);

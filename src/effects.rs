@@ -382,3 +382,172 @@ impl Effect for TapeDelay {
         }
     }
 }
+
+// pub struct AllPassFilter {
+//     buffer: Vec<f32>,
+//     delay: f32, // in seconds
+//     phase_shift_intensity: Number,
+// }
+
+// impl Clone for AllPassFilter {
+//     fn clone(&self) -> Self {
+//         let mut new_buffer = Vec::with_capacity(self.buffer.capacity());
+//         for sample in &self.buffer {
+//             new_buffer.push(*sample);
+//         }
+
+//         Self {
+//             buffer: new_buffer,
+//             delay: self.delay,
+//             phase_shift_intensity: self.phase_shift_intensity.clone(),
+//         }
+//     }
+// }
+
+// impl AllPassFilter {
+//     pub fn new(delay: f32, phase_shift_intensity: Number) -> Self {
+//         let buffer_size = (delay * *SAMPLE_RATE as f32) as usize;
+//         let buffer = Vec::with_capacity(buffer_size);
+
+//         Self {
+//             buffer,
+//             delay,
+//             phase_shift_intensity,
+//         }
+//     }
+
+//     fn push_sample_to_buffer(&mut self, sample: f32) {
+//         if self.buffer.len() >= self.buffer.capacity() {
+//             self.buffer.remove(0);
+//         }
+
+//         self.buffer.push(sample);
+//     }
+
+//     fn read_sample_from_buffer(&mut self) -> f32 {
+//         self.buffer[0]
+//     }
+
+//     fn process_sample(&mut self, sample: f32) -> f32 {
+//         let buffer_duration = self.buffer.len() as f32 / *SAMPLE_RATE as f32;
+//         let delay_sample = if buffer_duration < self.delay {
+//             0.0
+//         } else {
+//             self.read_sample_from_buffer()
+//         };
+
+//         let phase_shift_intensity = self.phase_shift_intensity.next_value();
+//         assert!(phase_shift_intensity >= -0.9 && phase_shift_intensity <= 0.9);
+//         let output = delay_sample + phase_shift_intensity * (sample - delay_sample);
+
+//         self.push_sample_to_buffer(sample + phase_shift_intensity * output);
+
+//         output
+//     }
+// }
+
+// impl Effect for AllPassFilter {
+//     fn clone_box(&self) -> Box<dyn Effect> {
+//         Box::new(self.clone())
+//     }
+
+//     fn apply(&mut self, input: EffectInput) -> EffectOutput {
+//         let mut new_grain = [0.0; SAMPLES_PER_GRAIN];
+
+//         for i in 0..SAMPLES_PER_GRAIN {
+//             let sample = input.grain[i];
+//             new_grain[i] = self.process_sample(sample);
+//         }
+
+//         EffectOutput {
+//             grain: new_grain,
+//             oscillator_changes: Vec::new(),
+//         }
+//     }
+// }
+
+// #[derive(Clone)]
+// pub struct SpringReverb {
+//     high_pass_filter: Filter,
+//     saturation: Saturation,
+//     initial_delays: Vec<TapeDelay>,
+//     spring_delays: Vec<TapeDelay>,
+// }
+
+// impl SpringReverb {
+//     pub fn new() -> Self {
+//         let high_pass_filter = Filter::new_high_pass(Number::number(300.0), Number::number(0.3), 1);
+//         let saturation = Saturation::new(Number::number(2.0), Number::number(0.7), 0.5);
+//         let initial_delays = vec![
+//             TapeDelay::new(
+//                 0.002,
+//                 Number::number(0.2),
+//                 Number::number(0.0),
+//                 0.0,
+//                 0.0,
+//                 0.0,
+//                 0.0,
+//             ),
+//             TapeDelay::new(
+//                 0.005,
+//                 Number::number(0.3),
+//                 Number::number(0.0),
+//                 0.0,
+//                 0.0,
+//                 0.0,
+//                 0.0,
+//             ),
+//         ];
+//         let spring_delays = vec![
+//             TapeDelay::new(
+//                 0.01,
+//                 Number::number(0.3),
+//                 Number::number(0.3),
+//                 0.0,
+//                 0.0,
+//                 0.0,
+//                 0.0,
+//             ),
+//             TapeDelay::new(
+//                 0.05,
+//                 Number::number(0.2),
+//                 Number::number(0.5),
+//                 0.0,
+//                 0.0,
+//                 0.0,
+//                 0.0,
+//             ),
+//             TapeDelay::new(
+//                 0.1,
+//                 Number::number(0.1),
+//                 Number::number(0.7),
+//                 0.0,
+//                 0.0,
+//                 0.0,
+//                 0.0,
+//             ),
+//         ];
+
+//         Self { high_pass_filter, saturation, initial_delays, spring_delays }
+//     }
+// }
+
+// impl Effect for SpringReverb {
+//     fn clone_box(&self) -> Box<dyn Effect> {
+//         Box::new(self.clone())
+//     }
+
+//     fn apply(&mut self, mut input: EffectInput) -> EffectOutput {
+//         for sample in &mut input.grain {
+//             *sample = self.high_pass_filter.process_sample(*sample);
+//             *sample = self.saturation.process_sample(*sample);
+//         }
+
+//         let initial_delayed_grains = self.initial_delays
+//             .iter_mut()
+//             .map(|delay| delay.apply(input.clone()).grain)
+//             .collect::<Vec<_>>();
+
+//         todo!()
+//     }
+// }

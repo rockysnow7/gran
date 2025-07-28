@@ -5,6 +5,7 @@ pub const SAMPLES_PER_GRAIN: usize = 512;
 pub type Grain = [f32; SAMPLES_PER_GRAIN];
 
 /// The data passed to an effect.
+#[derive(Clone)]
 pub struct EffectInput {
     pub grain: Grain,
     pub time_since_start_of_beat: f32, // in seconds
