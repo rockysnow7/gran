@@ -16,4 +16,3 @@ cpal = "0.16.0"
 hound = "3.5.1"
 rand = "0.9.1"
 rodio = "0.21.1"
-tokio = { version = "1.46.1", features = ["full"] }

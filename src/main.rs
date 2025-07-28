@@ -4,8 +4,7 @@ use gran::{
     effects::{Filter, Saturation, TapeDelay, Volume}, oscillator::{note, OscillatorBuilder, OscillatorInput, OscillatorInputAtTime, OscillatorInputIteratorBuilder, WaveFunction, ADSR}, play_sound, sample::{SampleBuilder, SampleInput, SampleInputAtTime, SampleInputIterator, SampleInputIteratorBuilder}, sound::CompositionBuilder, Number
 };
 
-#[tokio::main]
-async fn main() {
+fn main() {
     let inputs = OscillatorInputIteratorBuilder::new()
         .input(OscillatorInputAtTime {
             input: OscillatorInput::Press(note("C3")),
