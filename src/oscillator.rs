@@ -24,7 +24,7 @@ pub fn note(note_name: &str) -> f32 {
 }
 
 /// Attack-decay-sustain-release envelope settings for an oscillator.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ADSR {
     pub attack_duration: f32, // in seconds
     pub decay_duration: f32, // in seconds
@@ -49,6 +49,7 @@ pub enum OscillatorState {
     },
 }
 
+#[derive(Debug)]
 pub struct Oscillator {
     wave_function: Box<WaveFunction>,
     index: usize,

@@ -1,7 +1,7 @@
 use std::f32::consts::PI;
 use crate::player::SAMPLE_RATE;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LFO {
     wave_function: Box<WaveFunction>,
     phase: f32,
@@ -45,6 +45,7 @@ impl LFOBuilder {
     }
 }
 
+#[derive(Debug)]
 pub enum Number {
     Number {
         value: f32,
@@ -152,7 +153,7 @@ impl Number {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum WaveFunction {
     Sine {
         frequency: Number,

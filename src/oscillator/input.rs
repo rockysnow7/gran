@@ -13,7 +13,7 @@ pub struct OscillatorInputAtTime {
     pub time: f32, // in seconds since the start of the oscillator
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct OscillatorInputIterator {
     inputs: Vec<OscillatorInputAtTime>,
     index: usize,

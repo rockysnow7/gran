@@ -1,5 +1,5 @@
 use crate::{Number, player::SAMPLE_RATE, sound::{EffectInput, Grain, SAMPLES_PER_GRAIN}};
-use std::f32::consts::PI;
+use std::{f32::consts::PI, fmt::Debug};
 
 #[derive(Debug)]
 pub enum OscillatorChange {
@@ -11,13 +11,13 @@ pub struct EffectOutput {
     pub oscillator_changes: Vec<OscillatorChange>,
 }
 
-pub trait Effect: Send + Sync {
+pub trait Effect: Send + Sync + Debug {
     fn clone_box(&self) -> Box<dyn Effect>;
     fn apply(&mut self, input: EffectInput) -> EffectOutput;
 }
 
 /// Adjusts the volume of every grain.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Volume(pub Number);
 
 impl Effect for Volume {
@@ -38,7 +38,7 @@ impl Effect for Volume {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct OnePoleFilter {
     pub previous_output: f32,
 }
@@ -58,7 +58,7 @@ impl OnePoleFilter {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum FilterType {
     LowPass,
     HighPass,
@@ -66,7 +66,7 @@ pub enum FilterType {
     Notch,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Filter {
     mode: FilterType,
     cutoff_frequency: Number,
@@ -174,7 +174,7 @@ impl Effect for Filter {
 }
 
 /// Applies a soft saturation to the grain.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Saturation {
     target_drive: Number,
     actual_drive: f32,
@@ -244,6 +244,7 @@ impl Effect for Saturation {
 }
 
 /// A tape delay effect for slapback, echo, etc.
+#[derive(Debug)]
 pub struct TapeDelay {
     buffer: Vec<f32>,
     read_delay: f32, // in seconds
