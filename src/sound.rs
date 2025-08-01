@@ -117,6 +117,16 @@ pub enum Sound {
     Composition(Composition),
 }
 
+impl Sound {
+    pub fn add_effect(&mut self, effect: Effect) {
+        match self {
+            Sound::Oscillator(oscillator) => oscillator.add_effect(effect),
+            Sound::Sample(sample) => sample.add_effect(effect),
+            Sound::Composition(composition) => composition.add_effect(effect),
+        }
+    }
+}
+
 impl SoundTrait for Sound {
     fn clone_box(&self) -> Box<dyn SoundTrait> {
         Box::new(self.clone())
