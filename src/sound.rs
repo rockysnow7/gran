@@ -114,6 +114,7 @@ impl CompositionBuilder {
 pub enum Sound {
     Oscillator(Oscillator),
     Sample(Sample),
+    Composition(Composition),
 }
 
 impl SoundTrait for Sound {
@@ -125,6 +126,7 @@ impl SoundTrait for Sound {
         match self {
             Sound::Oscillator(oscillator) => oscillator.next_sample(),
             Sound::Sample(sample) => sample.next_sample(),
+            Sound::Composition(composition) => composition.next_sample(),
         }
     }
 
@@ -132,6 +134,7 @@ impl SoundTrait for Sound {
         match self {
             Sound::Oscillator(oscillator) => oscillator.next_grain(),
             Sound::Sample(sample) => sample.next_grain(),
+            Sound::Composition(composition) => composition.next_grain(),
         }
     }
 
@@ -139,6 +142,7 @@ impl SoundTrait for Sound {
         match self {
             Sound::Oscillator(oscillator) => oscillator.secs_per_beat(),
             Sound::Sample(sample) => sample.secs_per_beat(),
+            Sound::Composition(composition) => composition.secs_per_beat(),
         }
     }
 
@@ -146,6 +150,7 @@ impl SoundTrait for Sound {
         match self {
             Sound::Oscillator(oscillator) => oscillator.add_effect(effect),
             Sound::Sample(sample) => sample.add_effect(effect),
+            Sound::Composition(composition) => composition.add_effect(effect),
         }
     }
 
@@ -153,6 +158,7 @@ impl SoundTrait for Sound {
         match self {
             Sound::Oscillator(oscillator) => oscillator.update_sample_rate(sample_rate),
             Sound::Sample(sample) => sample.update_sample_rate(sample_rate),
+            Sound::Composition(composition) => composition.update_sample_rate(sample_rate),
         }
     }
 }
