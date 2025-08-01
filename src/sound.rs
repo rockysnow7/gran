@@ -1,4 +1,4 @@
-use crate::{effects::Effect, player::SAMPLE_RATE};
+use crate::{effects::{Effect, EffectTrait}, player::SAMPLE_RATE};
 
 pub const SAMPLES_PER_GRAIN: usize = 512;
 
@@ -14,7 +14,7 @@ pub struct EffectInput {
 pub trait Sound: Send + Sync {
     fn next_sample(&mut self) -> f32;
     fn next_grain(&mut self) -> Grain;
-    fn add_effect(&mut self, effect: Box<dyn Effect>);
+    fn add_effect(&mut self, effect: Effect);
     fn update_sample_rate(&mut self, sample_rate: usize);
     fn clone_box(&self) -> Box<dyn Sound>;
     fn secs_per_beat(&self) -> Option<f32>;
@@ -22,12 +22,12 @@ pub trait Sound: Send + Sync {
 
 pub struct Composition {
     sounds: Vec<Box<dyn Sound>>,
-    effects: Vec<Box<dyn Effect>>,
+    effects: Vec<Effect>,
     secs_since_start: f32,
 }
 
 impl Composition {
-    pub fn new(sounds: Vec<Box<dyn Sound>>, effects: Vec<Box<dyn Effect>>) -> Self {
+    pub fn new(sounds: Vec<Box<dyn Sound>>, effects: Vec<Effect>) -> Self {
         Self { sounds, effects, secs_since_start: 0.0 }
     }
 }
@@ -37,14 +37,15 @@ impl Sound for Composition {
         None
     }
 
-    fn add_effect(&mut self, effect: Box<dyn Effect>) {
+    fn add_effect(&mut self, effect: Effect) {
         self.effects.push(effect);
     }
 
     fn clone_box(&self) -> Box<dyn Sound> {
         Box::new(Self {
             sounds: self.sounds.iter().map(|s| s.clone_box()).collect(),
-            effects: self.effects.iter().map(|e| e.clone_box()).collect(),
+            // effects: self.effects.iter().map(|e| e.clone_box()).collect(),
+            effects: self.effects.clone(),
             secs_since_start: self.secs_since_start,
         })
     }
@@ -85,7 +86,7 @@ impl Sound for Composition {
 
 pub struct CompositionBuilder {
     sounds: Vec<Box<dyn Sound>>,
-    effects: Vec<Box<dyn Effect>>,
+    effects: Vec<Effect>,
 }
 
 impl CompositionBuilder {
@@ -98,7 +99,7 @@ impl CompositionBuilder {
         self
     }
 
-    pub fn effect(mut self, effect: Box<dyn Effect>) -> Self {
+    pub fn effect(mut self, effect: Effect) -> Self {
         self.effects.push(effect);
         self
     }

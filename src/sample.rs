@@ -1,6 +1,6 @@
 mod input;
 
-use crate::{effects::Effect, player::SAMPLE_RATE, sound::{EffectInput, Grain, Sound, SAMPLES_PER_GRAIN}};
+use crate::{effects::{Effect, EffectTrait}, player::SAMPLE_RATE, sound::{EffectInput, Grain, Sound, SAMPLES_PER_GRAIN}};
 pub use input::{SampleInput, SampleInputAtTime, SampleInputIterator, SampleInputIteratorBuilder};
 use rodio::{Decoder, Source};
 use std::{f32::consts::PI, fs::File, io::BufReader};
@@ -93,7 +93,7 @@ pub struct Sample {
     samples: Vec<f32>,
     secs_per_beat: f32,
     index: usize,
-    pub effects: Vec<Box<dyn Effect>>,
+    pub effects: Vec<Effect>,
     secs_since_start: f32,
     inputs: SampleInputIterator,
     play: bool,
@@ -188,14 +188,15 @@ impl Sound for Sample {
             samples: self.samples.clone(),
             secs_per_beat: self.secs_per_beat,
             index: self.index,
-            effects: self.effects.iter().map(|e| e.clone_box()).collect(),
+            // effects: self.effects.iter().map(|e| e.clone_box()).collect(),
+            effects: self.effects.clone(),
             secs_since_start: self.secs_since_start,
             inputs: self.inputs.clone(),
             play: self.play,
         })
     }
 
-    fn add_effect(&mut self, effect: Box<dyn Effect>) {
+    fn add_effect(&mut self, effect: Effect) {
         self.effects.push(effect);
     }
 }
@@ -227,7 +228,7 @@ pub struct SampleBuilder {
     samples: Option<Vec<f32>>,
     sample_rate: Option<usize>,
     secs_per_beat: Option<f32>,
-    effects: Vec<Box<dyn Effect>>,
+    effects: Vec<Effect>,
     inputs: Option<SampleInputIterator>,
 }
 
@@ -271,7 +272,7 @@ impl SampleBuilder {
         self
     }
 
-    pub fn effect(mut self, effect: Box<dyn Effect>) -> Self {
+    pub fn effect(mut self, effect: Effect) -> Self {
         self.effects.push(effect);
         self
     }

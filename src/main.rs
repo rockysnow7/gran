@@ -1,7 +1,7 @@
 #![warn(clippy::all, clippy::pedantic, unused_crate_dependencies)]
 
 use gran::{
-    effects::{Filter, Saturation, TapeDelay, Volume}, oscillator::{note, OscillatorBuilder, OscillatorInput, OscillatorInputAtTime, OscillatorInputIteratorBuilder, WaveFunction, ADSR}, play_sound, sample::{SampleBuilder, SampleInput, SampleInputAtTime, SampleInputIterator, SampleInputIteratorBuilder}, sound::CompositionBuilder, Number
+    effects::{Effect, Filter, Saturation, TapeDelay, Volume}, oscillator::{note, OscillatorBuilder, OscillatorInput, OscillatorInputAtTime, OscillatorInputIteratorBuilder, WaveFunction, ADSR}, play_sound, sample::{SampleBuilder, SampleInput, SampleInputAtTime, SampleInputIterator, SampleInputIteratorBuilder}, sound::CompositionBuilder, Number
 };
 
 fn main() {
@@ -53,13 +53,13 @@ fn main() {
             sustain_amplitude_multiplier: 0.8,
             release_duration: 0.3,
         })
-        .effect(Box::new(Volume(Number::number(1.0))))
-        .effect(Box::new(Filter::new_low_pass(
+        .effect(Effect::Volume(Volume(Number::number(1.0))))
+        .effect(Effect::Filter(Filter::new_low_pass(
             Number::sine_around(600.0, 50.0, 2.0),
             Number::number(0.5),
             4,
         )))
-        .effect(Box::new(Saturation::new(Number::number(8.0), Number::number(1.0), 1.0)))
+        .effect(Effect::Saturation(Saturation::new(Number::number(8.0), Number::number(1.0), 1.0)))
         .inputs(inputs)
         .build();
 
@@ -77,7 +77,7 @@ fn main() {
     let mut composition = CompositionBuilder::new()
         .sound(Box::new(pink_noise))
         .sound(Box::new(bass))
-        .effect(Box::new(TapeDelay::light(0.05)))
+        .effect(Effect::TapeDelay(TapeDelay::light(0.05)))
         .build();
 
     play_sound(&mut composition);

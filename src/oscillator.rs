@@ -1,7 +1,7 @@
 mod lfo;
 mod input;
 
-use crate::{effects::{Effect, OscillatorChange}, player::SAMPLE_RATE, sound::{EffectInput, Grain, Sound, SAMPLES_PER_GRAIN}};
+use crate::{effects::{Effect, EffectTrait, OscillatorChange}, player::SAMPLE_RATE, sound::{EffectInput, Grain, Sound, SAMPLES_PER_GRAIN}};
 pub use lfo::{Number, WaveFunction};
 pub use input::{OscillatorInput, OscillatorInputAtTime, OscillatorInputIterator, OscillatorInputIteratorBuilder};
 
@@ -53,7 +53,8 @@ pub enum OscillatorState {
 pub struct Oscillator {
     wave_function: Box<WaveFunction>,
     index: usize,
-    effects: Vec<Box<dyn Effect>>,
+    // effects: Vec<Box<dyn EffectTrait>>,
+    effects: Vec<Effect>,
     phase: f32,
     // inputs: Vec<OscillatorInputAtTime>,
     inputs: OscillatorInputIterator,
@@ -103,7 +104,8 @@ impl Clone for Oscillator {
         Self {
             wave_function: self.wave_function.clone(),
             index: self.index,
-            effects: self.effects.iter().map(|e| e.clone_box()).collect(),
+            // effects: self.effects.iter().map(|e| e.clone_box()).collect(),
+            effects: self.effects.clone(),
             phase: self.phase,
             inputs: self.inputs.clone(),
             state: self.state.clone(),
@@ -216,7 +218,8 @@ impl Sound for Oscillator {
         Box::new(Self {
             wave_function: self.wave_function.clone(),
             index: self.index,
-            effects: self.effects.iter().map(|e| e.clone_box()).collect(),
+            // effects: self.effects.iter().map(|e| e.clone_box()).collect(),
+            effects: self.effects.clone(),
             phase: self.phase,
             inputs: self.inputs.clone(),
             state: self.state.clone(),
@@ -225,14 +228,15 @@ impl Sound for Oscillator {
         })
     }
 
-    fn add_effect(&mut self, effect: Box<dyn Effect>) {
+    fn add_effect(&mut self, effect: Effect) {
         self.effects.push(effect);
     }
 }
 
 pub struct OscillatorBuilder {
     pub wave_function: Option<WaveFunction>,
-    pub effects: Vec<Box<dyn Effect>>,
+    // pub effects: Vec<Box<dyn EffectTrait>>,
+    pub effects: Vec<Effect>,
     pub inputs: Option<OscillatorInputIterator>,
     pub adsr: Option<ADSR>,
 }
@@ -252,7 +256,7 @@ impl OscillatorBuilder {
         self
     }
 
-    pub fn effect(mut self, effect: Box<dyn Effect>) -> Self {
+    pub fn effect(mut self, effect: Effect) -> Self {
         self.effects.push(effect);
         self
     }
