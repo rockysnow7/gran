@@ -1,7 +1,7 @@
 mod lfo;
 mod input;
 
-use crate::{effects::{Effect, EffectTrait, OscillatorChange}, player::SAMPLE_RATE, sound::{EffectInput, Grain, Sound, SAMPLES_PER_GRAIN}};
+use crate::{effects::{Effect, EffectTrait, OscillatorChange}, player::SAMPLE_RATE, sound::{EffectInput, Grain, SoundTrait, SAMPLES_PER_GRAIN}};
 pub use lfo::{Number, WaveFunction};
 pub use input::{OscillatorInput, OscillatorInputAtTime, OscillatorInputIterator, OscillatorInputIteratorBuilder};
 
@@ -119,7 +119,7 @@ impl Clone for Oscillator {
     }
 }
 
-impl Sound for Oscillator {
+impl SoundTrait for Oscillator {
     fn secs_per_beat(&self) -> Option<f32> {
         None
     }
@@ -218,7 +218,7 @@ impl Sound for Oscillator {
 
     fn update_sample_rate(&mut self, _sample_rate: usize) {} // does not affect anything
 
-    fn clone_box(&self) -> Box<dyn Sound> {
+    fn clone_box(&self) -> Box<dyn SoundTrait> {
         Box::new(Self {
             wave_function: self.wave_function.clone(),
             index: self.index,

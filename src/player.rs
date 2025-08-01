@@ -1,4 +1,4 @@
-use crate::sound::{Grain, SAMPLES_PER_GRAIN, Sound};
+use crate::sound::{Grain, SAMPLES_PER_GRAIN, SoundTrait};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, Host, Stream, StreamConfig, BufferSize};
 use std::sync::{Arc, Mutex, LazyLock};
@@ -11,7 +11,7 @@ pub static SAMPLE_RATE: LazyLock<usize> = LazyLock::new(|| {
     default_config.sample_rate().0 as usize
 });
 
-pub fn play_sound(sound: &mut dyn Sound) {
+pub fn play_sound(sound: &mut dyn SoundTrait) {
     let device = HOST.default_output_device().unwrap();
     let default_config = device.default_output_config().unwrap();
 
@@ -60,7 +60,7 @@ fn combine_grains(grains: Vec<Grain>) -> Vec<f32> {
 fn build_stream<T>(
     device: &Device,
     config: &StreamConfig,
-    sounds: Vec<Box<dyn Sound>>,
+    sounds: Vec<Box<dyn SoundTrait>>,
     err_fn: impl Fn(cpal::StreamError) + Send + 'static,
 ) -> Result<Stream, cpal::BuildStreamError>
 where

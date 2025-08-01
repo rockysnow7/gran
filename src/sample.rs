@@ -1,6 +1,6 @@
 mod input;
 
-use crate::{effects::{Effect, EffectTrait}, player::SAMPLE_RATE, sound::{EffectInput, Grain, Sound, SAMPLES_PER_GRAIN}};
+use crate::{effects::{Effect, EffectTrait}, player::SAMPLE_RATE, sound::{EffectInput, Grain, SoundTrait, SAMPLES_PER_GRAIN}};
 pub use input::{SampleInput, SampleInputAtTime, SampleInputIterator, SampleInputIteratorBuilder};
 use rodio::{Decoder, Source};
 use std::{f32::consts::PI, fs::File, io::BufReader};
@@ -89,6 +89,7 @@ fn normalize_sample_length(samples: Vec<f32>, target_length: usize) -> Vec<f32> 
     }
 }
 
+#[derive(Clone)]
 pub struct Sample {
     samples: Vec<f32>,
     secs_per_beat: f32,
@@ -136,7 +137,7 @@ impl Sample {
     }
 }
 
-impl Sound for Sample {
+impl SoundTrait for Sample {
     fn secs_per_beat(&self) -> Option<f32> {
         Some(self.secs_per_beat)
     }
@@ -183,7 +184,7 @@ impl Sound for Sample {
         self.samples = normalize_sample_length(std::mem::take(&mut self.samples), target_samples);
     }
 
-    fn clone_box(&self) -> Box<dyn Sound> {
+    fn clone_box(&self) -> Box<dyn SoundTrait> {
         Box::new(Sample {
             samples: self.samples.clone(),
             secs_per_beat: self.secs_per_beat,

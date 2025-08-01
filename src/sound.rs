@@ -1,4 +1,4 @@
-use crate::{effects::{Effect, EffectTrait}, player::SAMPLE_RATE};
+use crate::{effects::{Effect, EffectTrait}, oscillator::Oscillator, player::SAMPLE_RATE, sample::Sample};
 
 pub const SAMPLES_PER_GRAIN: usize = 512;
 
@@ -11,28 +11,29 @@ pub struct EffectInput {
     pub time_since_start_of_beat: f32, // in seconds
 }
 
-pub trait Sound: Send + Sync {
+pub trait SoundTrait: Send + Sync {
     fn next_sample(&mut self) -> f32;
     fn next_grain(&mut self) -> Grain;
     fn add_effect(&mut self, effect: Effect);
     fn update_sample_rate(&mut self, sample_rate: usize);
-    fn clone_box(&self) -> Box<dyn Sound>;
+    fn clone_box(&self) -> Box<dyn SoundTrait>;
     fn secs_per_beat(&self) -> Option<f32>;
 }
 
+#[derive(Clone)]
 pub struct Composition {
-    sounds: Vec<Box<dyn Sound>>,
+    sounds: Vec<Sound>,
     effects: Vec<Effect>,
     secs_since_start: f32,
 }
 
 impl Composition {
-    pub fn new(sounds: Vec<Box<dyn Sound>>, effects: Vec<Effect>) -> Self {
+    pub fn new(sounds: Vec<Sound>, effects: Vec<Effect>) -> Self {
         Self { sounds, effects, secs_since_start: 0.0 }
     }
 }
 
-impl Sound for Composition {
+impl SoundTrait for Composition {
     fn secs_per_beat(&self) -> Option<f32> {
         None
     }
@@ -41,10 +42,10 @@ impl Sound for Composition {
         self.effects.push(effect);
     }
 
-    fn clone_box(&self) -> Box<dyn Sound> {
+    fn clone_box(&self) -> Box<dyn SoundTrait> {
         Box::new(Self {
-            sounds: self.sounds.iter().map(|s| s.clone_box()).collect(),
-            // effects: self.effects.iter().map(|e| e.clone_box()).collect(),
+            // sounds: self.sounds.iter().map(|s| s.clone_box()).collect(),
+            sounds: self.sounds.clone(),
             effects: self.effects.clone(),
             secs_since_start: self.secs_since_start,
         })
@@ -85,7 +86,7 @@ impl Sound for Composition {
 }
 
 pub struct CompositionBuilder {
-    sounds: Vec<Box<dyn Sound>>,
+    sounds: Vec<Sound>,
     effects: Vec<Effect>,
 }
 
@@ -94,7 +95,7 @@ impl CompositionBuilder {
         Self { sounds: Vec::new(), effects: Vec::new() }
     }
 
-    pub fn sound(mut self, sound: Box<dyn Sound>) -> Self {
+    pub fn sound(mut self, sound: Sound) -> Self {
         self.sounds.push(sound);
         self
     }
@@ -106,5 +107,52 @@ impl CompositionBuilder {
 
     pub fn build(self) -> Composition {
         Composition::new(self.sounds, self.effects)
+    }
+}
+
+#[derive(Clone)]
+pub enum Sound {
+    Oscillator(Oscillator),
+    Sample(Sample),
+}
+
+impl SoundTrait for Sound {
+    fn clone_box(&self) -> Box<dyn SoundTrait> {
+        Box::new(self.clone())
+    }
+
+    fn next_sample(&mut self) -> f32 {
+        match self {
+            Sound::Oscillator(oscillator) => oscillator.next_sample(),
+            Sound::Sample(sample) => sample.next_sample(),
+        }
+    }
+
+    fn next_grain(&mut self) -> Grain {
+        match self {
+            Sound::Oscillator(oscillator) => oscillator.next_grain(),
+            Sound::Sample(sample) => sample.next_grain(),
+        }
+    }
+
+    fn secs_per_beat(&self) -> Option<f32> {
+        match self {
+            Sound::Oscillator(oscillator) => oscillator.secs_per_beat(),
+            Sound::Sample(sample) => sample.secs_per_beat(),
+        }
+    }
+
+    fn add_effect(&mut self, effect: Effect) {
+        match self {
+            Sound::Oscillator(oscillator) => oscillator.add_effect(effect),
+            Sound::Sample(sample) => sample.add_effect(effect),
+        }
+    }
+
+    fn update_sample_rate(&mut self, sample_rate: usize) {
+        match self {
+            Sound::Oscillator(oscillator) => oscillator.update_sample_rate(sample_rate),
+            Sound::Sample(sample) => sample.update_sample_rate(sample_rate),
+        }
     }
 }

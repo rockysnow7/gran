@@ -1,7 +1,7 @@
 #![warn(clippy::all, clippy::pedantic, unused_crate_dependencies)]
 
 use gran::{
-    effects::{Effect, Filter, Saturation, TapeDelay, Volume}, oscillator::{note, OscillatorBuilder, OscillatorInput, OscillatorInputAtTime, OscillatorInputIteratorBuilder, WaveFunction, ADSR}, play_sound, sample::{SampleBuilder, SampleInput, SampleInputAtTime, SampleInputIterator, SampleInputIteratorBuilder}, sound::CompositionBuilder, Number
+    effects::{Effect, Filter, Saturation, TapeDelay, Volume}, oscillator::{note, OscillatorBuilder, OscillatorInput, OscillatorInputAtTime, OscillatorInputIteratorBuilder, WaveFunction, ADSR}, play_sound, sample::{SampleBuilder, SampleInput, SampleInputAtTime, SampleInputIterator, SampleInputIteratorBuilder}, sound::{CompositionBuilder, Sound}, Number
 };
 
 fn main() {
@@ -75,8 +75,8 @@ fn main() {
         .build();
 
     let mut composition = CompositionBuilder::new()
-        .sound(Box::new(pink_noise))
-        .sound(Box::new(bass))
+        .sound(Sound::Oscillator(pink_noise))
+        .sound(Sound::Oscillator(bass))
         .effect(Effect::TapeDelay(TapeDelay::light(0.05)))
         .build();
 
