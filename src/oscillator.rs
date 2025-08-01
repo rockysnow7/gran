@@ -97,6 +97,10 @@ impl Oscillator {
             self.handle_input(input.input);
         }
     }
+
+    pub fn set_adsr(&mut self, adsr: ADSR) {
+        self.adsr = adsr;
+    }
 }
 
 impl Clone for Oscillator {
