@@ -9,7 +9,7 @@ pub struct SampleInputAtTime {
     pub time: f32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SampleInputIterator {
     inputs: Vec<SampleInputAtTime>,
     index: usize,

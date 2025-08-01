@@ -89,7 +89,7 @@ fn normalize_sample_length(samples: Vec<f32>, target_length: usize) -> Vec<f32> 
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Sample {
     samples: Vec<f32>,
     secs_per_beat: f32,

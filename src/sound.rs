@@ -20,7 +20,7 @@ pub trait SoundTrait: Send + Sync {
     fn secs_per_beat(&self) -> Option<f32>;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Composition {
     sounds: Vec<Sound>,
     effects: Vec<Effect>,
@@ -110,7 +110,7 @@ impl CompositionBuilder {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Sound {
     Oscillator(Oscillator),
     Sample(Sample),
